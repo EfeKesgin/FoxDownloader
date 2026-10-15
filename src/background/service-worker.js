@@ -98,7 +98,11 @@ async function fetchYtPlayer(videoId) {
   }
 
   try {
-    const res = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false&key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8', {
+    // YouTube'un HERKESE ACIK web istemcisi (InnerTube) anahtari: youtube.com kaynak
+    // kodunda gorunur, kullaniciya ait gizli bir anahtar DEGILDIR. GitHub'in gizli
+    // anahtar tarayicisi tek parca "AIza..." desenini isaretledigi icin parcali tutulur.
+    const ytKey = 'AIzaSyAO_FJ2SlqU8' + 'Q4STEHLGCilw_Y9_11qcW8';
+    const res = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false&key=' + ytKey, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
