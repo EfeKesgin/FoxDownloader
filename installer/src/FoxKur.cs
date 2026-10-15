@@ -226,17 +226,18 @@ namespace FoxDownloader
                 "Son adım — eklentiyi tarayıcıya yükle (tek seferlik):\r\n" +
                 "1)  Yukarıdaki düğmeyle Uzantılar sayfasını açın\r\n" +
                 "2)  Sağ üstten \"Geliştirici modu\"nu açın\r\n" +
-                "3)  \"Paketlenmemiş öğe yükle\" → şu klasörü seçin (yolu panoya kopyaladım):",
-                9f, Theme.Text, false, 16, 86, 545, 78));
+                "3)  \"Paketlenmemiş öğe yükle\" → pencerenin adres çubuğuna aşağıdaki yolu\r\n" +
+                "     yapıştırıp Enter deyin (yol panoda hazır):",
+                9f, Theme.Text, false, 16, 84, 545, 92));
 
-            pnlDone.Controls.Add(NewLabel("Eklenti klasörü:", 8.5f, Theme.Muted, false, 16, 172, 90, 18));
+            pnlDone.Controls.Add(NewLabel("Eklenti klasörü:", 8.5f, Theme.Muted, false, 16, 182, 90, 18));
             txtPath = new TextBox();
             txtPath.ReadOnly = true;
             txtPath.BorderStyle = BorderStyle.FixedSingle;
             txtPath.BackColor = Theme.Surface2;
             txtPath.ForeColor = Theme.Text;
             txtPath.Font = new Font("Consolas", 8.25f);
-            txtPath.Location = new Point(112, 168);
+            txtPath.Location = new Point(112, 178);
             txtPath.Size = new Size(448, 24);
             txtPath.Text = Core.ExtDir();
             pnlDone.Controls.Add(txtPath);
