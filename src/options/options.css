@@ -1,0 +1,202 @@
+:root {
+  color-scheme: dark;
+  --bg: #161412;
+  --surface: #201c19;
+  --surface-2: #292420;
+  --border: #3a332d;
+  --text: #f3ede4;
+  --text-2: #d7cec3;
+  --muted: #a89d91;
+  --accent: #dc7a3d;
+  --accent-2: #c76a33;
+  --accent-soft: rgba(220, 122, 61, 0.14);
+  --ok: #8ab86f;
+  --warn: #d9ab55;
+  --err: #cd6a60;
+}
+* {
+  box-sizing: border-box;
+  font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+.top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 22px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
+}
+.brand .name { font-size: 15px; font-weight: 700; }
+.brand .sub { font-size: 11.5px; color: var(--muted); }
+main {
+  max-width: 780px;
+  margin: 18px auto 40px;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+.card h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+.card h3 {
+  margin: 18px 0 6px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.tag-opt {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 3px 9px;
+  vertical-align: 2px;
+  margin-left: 8px;
+}
+.lead {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-2);
+  margin: 6px 0 14px;
+}
+.status {
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+.status b { font-size: 13.5px; }
+.status.ok { background: rgba(138, 184, 111, 0.12); border-color: rgba(138, 184, 111, 0.4); color: #a9d18f; }
+.status.bad { background: rgba(205, 106, 96, 0.12); border-color: rgba(205, 106, 96, 0.4); color: #e5a49d; }
+.status.warn { background: rgba(217, 171, 85, 0.12); border-color: rgba(217, 171, 85, 0.4); color: #e7c37e; }
+.status .sub { font-size: 12px; margin-top: 4px; color: inherit; opacity: 0.9; }
+.status code { font-size: 11.5px; }
+.btnrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.btn {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: 9px;
+  padding: 9px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #22160f;
+  font-weight: 700;
+}
+.btn.primary:hover { background: var(--accent-2); border-color: var(--accent-2); color: #22160f; }
+.btn.ghost {
+  background: transparent;
+  color: var(--muted);
+}
+.btn.ghost:hover { color: var(--accent); border-color: var(--accent); }
+.btn:disabled { opacity: 0.55; cursor: default; }
+.msg {
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+  min-height: 16px;
+}
+.msg.ok { color: var(--ok); }
+.msg.bad { color: var(--err); }
+.steps, .card p, details p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.steps { padding-left: 20px; margin: 6px 0 0; }
+.steps li { margin-bottom: 6px; }
+details {
+  border-top: 1px solid var(--border);
+  padding: 10px 0 2px;
+}
+details summary {
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+details p { margin: 8px 0 4px; }
+code {
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: 12px;
+  font-family: Consolas, 'Courier New', monospace;
+}
+.field {
+  margin: 14px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.field label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.field select,
+.field input[type='text'] {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  background: var(--surface-2);
+  color: var(--text);
+  max-width: 460px;
+}
+.field .hint, .hint {
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.foot {
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--muted);
+}

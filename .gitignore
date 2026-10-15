@@ -1,0 +1,8 @@
+# Derleme ara çıktıları (build-installer.mjs)
+build/
+
+# Node
+node_modules/
+
+# Geçici / log dosyaları
+*.log

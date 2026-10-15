@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FoxDownloader — Ayarlar</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="logo" style="background:none;padding:0">
+      <img src="../../icons/icon48.png" width="38" height="38" alt="FoxDownloader" style="display:block;border-radius:11px" />
+    </div>
+    <div class="brand">
+      <div class="name">FoxDownloader</div>
+      <div class="sub">Ayarlar • YouTube • X • TikTok</div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ===================== FoxDownloader Yardımcısı ===================== -->
+    <section class="card">
+      <h2>FoxDownloader Yardımcısı <span class="tag-opt">zorunlu</span></h2>
+      <p class="lead">
+        İndirmelerin tamamı (YouTube 1080p / 4K dâhil, TikTok) bu yardımcı üzerinden yapılır;
+        kurulum <b>tek seferliktir</b> ve yönetici izni gerektirmez. Yardımcı, açık kaynak
+        <b>yt-dlp</b>'yi kullanır: YouTube'da <b>tüm kaliteleri</b> (4K'ya kadar; 1080p'ye kadar
+        <b>MP4 H.264</b>, üzeri <b>MP4/WebM</b>), TikTok'ta <b>filigransız MP4</b> indirir.
+      </p>
+
+      <div id="helperStatus" class="status">Durum kontrol ediliyor…</div>
+
+      <div class="btnrow" style="margin-top:8px">
+        <button id="reloadExtBtn" class="btn ghost" title="Diskteki son sürümü yükler; eski kod bellekte kalmışsa bunu çözer">Eklentiyi yenile</button>
+        <button id="diagBtn" class="btn ghost">Tanı raporu al</button>
+      </div>
+      <div id="diagBox" style="display:none;margin-top:8px">
+        <textarea id="diagText" readonly spellcheck="false" style="width:100%;height:130px;font-family:Consolas,monospace;font-size:11px"></textarea>
+        <div class="btnrow" style="margin-top:6px">
+          <button id="diagCopyBtn" class="btn">Raporu kopyala</button>
+        </div>
+      </div>
+
+      <div class="btnrow">
+        <button id="checkBtn" class="btn">Kontrol et</button>
+        <button id="installBtn" class="btn primary">Kurulum dosyalarını indir (.cmd + .ps1)</button>
+        <button id="uninstallBtn" class="btn ghost">Kaldırma dosyalarını indir</button>
+      </div>
+      <div id="installMsg" class="msg"></div>
+
+      <h3>Kurulum adımları</h3>
+      <ol class="steps">
+        <li>Yukarıdaki <b>Kurulum dosyalarını indir</b> düğmesine basın — İndirilenler klasörüne
+          <code>FoxDownloader-Yardimci-Kur.cmd</code> ve <code>FoxDownloader-Yardimci-Kur.ps1</code> iner.</li>
+        <li>Tarayıcı "bu tür dosya zarar verebilir" diye sorarsa <b>Sakla / Keep</b> deyin.</li>
+        <li>İndirilenler klasöründe <code>FoxDownloader-Yardimci-Kur.cmd</code> dosyasına <b>çift tıklayın</b>
+          (iki dosya aynı klasörde olmalıdır).</li>
+        <li>Kurulum penceresi: yt-dlp indirilir, yardımcı derlenir. FFmpeg sorulursa
+          <b>Enter</b>'a basıp indirin (~130 MB) — YouTube videoları görüntü ve ses olarak ayrı
+          akışlarda geldiği için birleştirme <b>FFmpeg olmadan yapılamaz</b> (indirmeler
+          "format bulunamadı" hatasıyla biter).</li>
+        <li>Pencere kapandıktan sonra burada <b>Kontrol et</b> düğmesine basın: "Yardımcı kurulu ✓" yazmalı.
+          Yazmıyorsa tarayıcıyı yeniden başlatıp tekrar deneyin.</li>
+      </ol>
+
+      <h3>Sık sorulanlar</h3>
+      <details>
+        <summary>Ne kuruluyor, nereye?</summary>
+        <p>
+          Kurulum <code>%LOCALAPPDATA%\FoxDownloaderHelper</code> klasörüne şunları koyar:
+          <code>ythelper.exe</code> (bu eklentiye özel, ~18 KB), <code>yt-dlp.exe</code> (GitHub'dan),
+          isteğe bağlı <code>ffmpeg.exe</code>. Ayrıca Chrome/Brave/Edge/Opera için
+          <code>HKCU</code> altında native messaging kaydı yazılır (yönetici izni gerekmez).
+        </p>
+      </details>
+      <details>
+        <summary>Bellek (RAM) kullanımı ne kadar?</summary>
+        <p>
+          Yardımcı <b>yalnızca indirme sırasında</b> çalışır ve iş bitince kapanır; boşta
+          <b>0 MB</b>'dır. İndirme sırasında yardımcı süreç ~16 MB, yt-dlp süreci tipik olarak
+          40–80 MB kullanır (indirme bitince ikisi de kapanır).
+        </p>
+      </details>
+      <details>
+        <summary>Antivirüs uyarısı aldım</summary>
+        <p>
+          <code>ythelper.exe</code> yerel olarak derlenen, imzasız küçük bir yardımcı programdır.
+          Bazı antivirüsler imzasız yeni derlenmiş dosyaları yanlış pozitifle işaretleyebilir.
+          Emin olmak için dosyaları inceleyebilirsiniz; kaynak kod eklenti paketinin
+          <code>helper/src/ythelper.cs</code> dosyasındadır. Gerekirse
+          <code>%LOCALAPPDATA%\FoxDownloaderHelper</code> klasörünü antivirüs dışlamalarına ekleyin.
+        </p>
+      </details>
+      <details>
+        <summary>Nasıl kaldırılır?</summary>
+        <p>
+          <b>Kaldırma dosyalarını indir</b> düğmesine basın, inen
+          <code>FoxDownloader-Yardimci-Kaldir.cmd</code> dosyasına çift tıklayın. Kayıt defteri
+          anahtarları ve yardımcı klasörü silinir.
+        </p>
+      </details>
+    </section>
+
+    <!-- ===================== İndirme ayarları ===================== -->
+    <section class="card">
+      <h2>İndirme ayarları</h2>
+
+      <div class="field">
+        <label for="concurrency">Eşzamanlı indirme sayısı</label>
+        <select id="concurrency">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+        </select>
+        <div class="hint">Aynı anda kaç indirme yapılsın.</div>
+      </div>
+
+      <div class="field">
+        <label class="check"><input type="checkbox" id="autoRetry" /> Kopan indirmeleri otomatik sürdür</label>
+      </div>
+
+      <div class="field">
+        <label for="helperDir">İndirme klasörü</label>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="helperDir" placeholder="Boş = İndirilenler" spellcheck="false" style="flex:1" />
+          <button id="browseDirBtn" class="btn ghost" type="button">Gözat…</button>
+        </div>
+        <div class="hint">
+          Yardımcı ile indirilen dosyaların klasörü. Boş bırakılırsa doğrudan <b>İndirilenler</b>
+          klasörüne iner; <b>alt klasör oluşturulmaz</b>. "Gözat" düğmesi klasör seçme penceresi
+          açar. Tarayıcı üzerinden yapılan indirmeler (X) her zaman tarayıcının İndirilenler
+          klasörüne iner.
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="helperCookies">Yardımcı için tarayıcı çerezleri</label>
+        <select id="helperCookies">
+          <option value="">Kullanma (önerilir)</option>
+          <option value="brave">Brave</option>
+          <option value="chrome">Chrome</option>
+          <option value="chromium">Chromium</option>
+          <option value="edge">Edge</option>
+          <option value="opera">Opera</option>
+          <option value="vivaldi">Vivaldi</option>
+          <option value="firefox">Firefox</option>
+        </select>
+        <div class="hint">
+          Yalnızca "bot doğrulaması" veya yaş kısıtı hatası alırsanız gerekir. Not: Chrome 127+ Windows'ta
+          çerezler uygulama bağlantılı şifreleme (App-Bound Encryption) ile korunur ve okunamayabilir;
+          Firefox genelde sorunsuz çalışır.
+        </div>
+      </div>
+
+      <div id="settingsMsg" class="msg"></div>
+    </section>
+
+    <footer class="foot">
+      Sürüm <span id="version">—</span> • Kaynak kod: eklenti klasörü <code>README.md</code>
+    </footer>
+  </main>
+
+  <script src="../common/protocol.js"></script>
+  <script src="../common/utils.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

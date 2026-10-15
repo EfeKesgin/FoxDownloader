@@ -1,0 +1,76 @@
+{
+  "manifest_version": 3,
+  "name": "FoxDownloader (YouTube • X • TikTok)",
+  "version": "1.3.0",
+  "description": "YouTube, X (Twitter) ve TikTok videolarını kalite seçimiyle indir. Kuyruk, ilerleme ve hız takibi dahil.",
+  "minimum_chrome_version": "114",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAt2NLiMMM0gixP3/Yt7BUXrLy8ejNhQ4PkSrMkZv9po6U4uRDeb1DVdzP9h26LZjmw7JckSX/kDfgI/yFFvSPIThmdwQTYmS1J+jArq7pRGzy0e5LirK9C+FmixU/lsKBXQvVzYt/5pPcqo8x0hHFRunmANBXd20QS4umOdhU8pGF/IqljyBplXWvZ3v8bFVSWTwgAQuGoAJIQszJ1dSiL72HUyOzmCEMVSfNgY5rz2EV4iGeE9V/DVLSLuSToj6U8LAM+l+Saz2Pu3RLgqwiGGg6f4KyuegkIbI8oiBSJRFfi8BIxj0Vho1BuQERWLCq2KKugabSKcIMnqLY34SQdQIDAQAB",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "downloads",
+    "webRequest",
+    "storage",
+    "tabs",
+    "declarativeNetRequest",
+    "nativeMessaging",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "*://*.googlevideo.com/*",
+    "*://youtu.be/*",
+    "*://*.tiktok.com/*",
+    "*://*.tiktokcdn.com/*",
+    "*://*.tiktokcdn-us.com/*",
+    "*://*.tiktokcdn-eu.com/*",
+    "*://*.tiktokv.com/*",
+    "*://*.byteoversea.com/*",
+    "*://*.twitter.com/*",
+    "*://*.x.com/*",
+    "*://*.twimg.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.youtube.com/*",
+        "*://*.tiktok.com/*",
+        "*://*.twitter.com/*",
+        "*://*.x.com/*"
+      ],
+      "js": [
+        "src/common/protocol.js",
+        "src/common/utils.js",
+        "src/content/ui.js",
+        "src/content/extractors/youtube.js",
+        "src/content/extractors/tiktok.js",
+        "src/content/extractors/twitter.js",
+        "src/content/content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_title": "FoxDownloader",
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "src/options/options.html",
+    "open_in_tab": true
+  }
+}

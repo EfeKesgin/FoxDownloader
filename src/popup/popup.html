@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FoxDownloader</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="logo" style="background:none;padding:0">
+      <img src="../../icons/icon48.png" width="34" height="34" alt="FoxDownloader" style="display:block;border-radius:10px" />
+    </div>
+    <div class="brand">
+      <div class="name">FoxDownloader</div>
+      <div class="sub">YouTube • X • TikTok</div>
+    </div>
+    <label class="conc" title="Eşzamanlı indirme sayısı">
+      <span>Eşzamanlı</span>
+      <select id="concurrency">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+      </select>
+    </label>
+    <button id="openSettings" class="gear" title="Ayarlar (YouTube Yardımcısı)">⚙</button>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="page">Bu Sayfa</button>
+    <button class="tab" data-tab="queue">Kuyruk <span id="queueCount" class="pill" hidden>0</span></button>
+  </nav>
+
+  <main>
+    <section id="tab-page" class="tabpane active">
+      <div id="pageContent" class="state">Formatlar aranıyor…</div>
+    </section>
+    <section id="tab-queue" class="tabpane">
+      <div id="queueContent" class="state">Kuyruk boş.</div>
+      <footer class="queue-foot">
+        <button id="clearFinished">Bitenleri temizle</button>
+      </footer>
+    </section>
+  </main>
+
+  <script src="../common/protocol.js"></script>
+  <script src="../common/utils.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
