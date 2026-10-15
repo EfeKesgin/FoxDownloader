@@ -10,7 +10,6 @@
   else if (/(^|\.)(twitter|x)\.com$/.test(host)) extractor = extractors.twitter;
   if (!extractor) return;
 
-  const UI = globalThis.VD_UI;
   let currentKey = null;
   let pageFormatsCache = null;
   let cacheTime = 0;
@@ -64,7 +63,6 @@
     if (!ctx) {
       currentKey = null;
       pageFormatsCache = null;
-      UI.hideFab();
       return;
     }
     if (ctx.key !== currentKey) {
@@ -72,7 +70,6 @@
       pageFormatsCache = null;
       send({ type: P.TAB_VIDEO, videoId: ctx.videoId });
     }
-    UI.showFab();
   }
 
   let lastHref = location.href;
@@ -193,23 +190,12 @@
       return false;
     }
 
-    if (msg.type === P.QUEUE_UPDATE) {
-      UI.setQueueStats(msg);
-      return false;
-    }
-
     return false;
   });
 
   // ---- başlat ----
 
-  UI.init(() => loadFormats(true));
-  UI.hideFab();
-  send({ type: P.TAB_HELLO }).then((res) => {
-    if (res && res.ok && Array.isArray(res.queue)) {
-      UI.setQueueStats({ queue: res.queue });
-    }
-  });
+  send({ type: P.TAB_HELLO });
 
   let booted = false;
   const boot = () => {

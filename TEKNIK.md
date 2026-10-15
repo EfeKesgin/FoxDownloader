@@ -14,8 +14,7 @@ yardımcı program. Kurulum **tek seferliktir**, yönetici izni gerektirmez ve y
 ## Özellikler
 
 - **Kalite/format seçimi**: İndirmeden önce çözünürlük/kalite seçin (YouTube'da 4K'ya kadar).
-- **Yüzen indir butonu**: YouTube, X ve TikTok video sayfalarında sağ altta; tek tıkla indirme.
-- **Popup paneli**: Aktif sayfadaki formatlar + indirme kuyruğu ve ayarlar.
+- **Popup paneli**: İndirmeler buradan başlatılır — aktif sayfadaki formatlar + kuyruk ve ayarlar.
 - **İndirme kuyruğu**: Eşzamanlı indirme (1–5), ilerleme yüzdesi, hız, iptal/tekrar dene.
 - **Klasörde göster**: Tamamlanan indirmeyi dosya yöneticisinde açar.
 - **Dosya düzeni**: `İndirilenler/Yazar - Başlık [kalite].uzantı` — **alt klasör oluşturulmaz**.
@@ -83,7 +82,6 @@ src/
 │   └── sniffer.js         # webRequest ile medya URL'lerini yakalama
 ├── content/
 │   ├── content.js         # Platform yönlendirme, SPA takibi, indirme hattı
-│   ├── ui.js              # Yüzen buton + Shadow DOM panel (+ kurulum kapısı)
 │   └── extractors/        # youtube.js • tiktok.js • twitter.js
 ├── options/               # Ayarlar sayfası (yardımcı kurulumu + ayarlar)
 └── popup/                 # Araç çubuğu paneli (sayfa formatları + kuyruk)

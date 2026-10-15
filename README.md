@@ -18,7 +18,8 @@ eklentisi. Brave, Chrome, Edge, Opera ve diğer Chromium tabanlı tarayıcılard
    **Geliştirici modu** → **Paketlenmemiş öğe yükle** → klasörü seç
    *(klasör yolu otomatik kopyalanır)*
 
-Hazır! Video sayfalarında sağ altta beliren 🦊 butonuyla indirin.
+Hazır! Video sayfasında araç çubuğundaki 🦊 simgesine tıklayın, kaliteyi seçip indirin.
+*(Simge görünmüyorsa: adres çubuğunun yanındaki 🧩 simgesi → FoxDownloader → Sabitle.)*
 
 > - **Yönetici izni gerekmez**; sistem klasörlerine hiçbir şey kurulmaz.
 > - Kurulum internet ister: yardımcı araçlar otomatik indirilir
