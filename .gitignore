@@ -6,3 +6,10 @@ node_modules/
 
 # Geçici / log dosyaları
 *.log
+
+# Eklenti özel anahtarı (asla commit etmeyin)
+devtools/extension-key.json
+devtools/extension-key.private.json
+
+# Derlenen EXE dosyaları GitHub Releases üzerinden dağıtılır
+dist/

@@ -15,9 +15,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
 const check = process.argv.includes('--check');
 
-const keyFile = join(here, 'extension-key.json');
+const keyFile = join(here, 'extension-id.json');
 if (!existsSync(keyFile)) {
-  console.error('devtools/extension-key.json yok. Önce: node devtools/make-extension-key.mjs');
+  console.error('devtools/extension-id.json yok. Önce: node devtools/make-extension-key.mjs');
   process.exit(1);
 }
 const extensionId = JSON.parse(readFileSync(keyFile, 'utf8')).id;

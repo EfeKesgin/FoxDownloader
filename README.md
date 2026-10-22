@@ -1,5 +1,9 @@
 # FoxDownloader 🦊
 
+[![Son sürüm](https://img.shields.io/github/v/release/EfeKesgin/FoxDownloader?label=s%C3%BCr%C3%BCm)](https://github.com/EfeKesgin/FoxDownloader/releases/latest)
+[![Lisans: MIT](https://img.shields.io/badge/lisans-MIT-blue.svg)](LICENSE)
+![Platform](https://img.shields.io/badge/platform-Windows-0078D6)
+
 YouTube (4K'ya kadar), X (Twitter) ve TikTok videolarını indirmenizi sağlayan tarayıcı
 eklentisi. Brave, Chrome, Edge, Opera ve diğer Chromium tabanlı tarayıcılarda çalışır (Windows).
 
@@ -49,6 +53,17 @@ Mimari, indirme hatları, yardımcı protokolü, tam sorun giderme listesi ve ge
 → **[TEKNIK.md](TEKNIK.md)**
 
 Yardımcı boşta çalışmaz (0 MB); yalnızca indirme sırasında açılır.
+
+## Geliştiriciler için
+
+```bash
+git clone https://github.com/EfeKesgin/FoxDownloader.git
+cd FoxDownloader
+node devtools/check.mjs            # söz dizimi denetimi
+node devtools/build-installer.mjs  # dist/ altında EXE’leri derler
+```
+
+Ayrıntılar ve derleme adımları: [TEKNIK.md → Geliştirme ve derleme](TEKNIK.md#geli%C5%9Ftirme-ve-derleme).
 
 ## Yasal not
 
