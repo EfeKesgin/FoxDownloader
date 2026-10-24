@@ -117,7 +117,8 @@ icons/
 └── generate-icons.ps1     # Tilki logosunu (16/32/48/128 PNG) yeniden üretir
 
 devtools/
-├── make-extension-key.mjs # Sabit eklenti kimliği (native messaging için)
+├── extension-id.json      # Sabit eklenti kimliği + açık anahtar (manifest "key")
+├── make-extension-key.mjs # Kimlik üretir; özel anahtar .gitignore'daki dosyaya yazılır
 ├── build-helper.mjs       # helper/src → helper/*.cmd|.ps1 üretimi
 ├── build-installer.mjs    # Eklentiyi paketler → dist/FoxDownloader-Kur.exe + Kaldir.exe
 └── check.mjs              # Tüm JS dosyaları için söz dizimi denetimi
@@ -208,16 +209,13 @@ Hata durumunda native indirmelerde tek otomatik yeniden deneme.
 ## Geliştirme ve derleme
 
 ```bash
-node devtools/make-extension-key.mjs   # (bir kez) sabit eklenti kimliği üretir
+node devtools/make-extension-key.mjs   # kimliği gösterir (yoksa üretir; depoda zaten var)
 node devtools/build-helper.mjs         # helper/src → helper/*.cmd|.ps1 üretir
 node devtools/build-installer.mjs      # eklenti + betikleri gömer → dist/ EXE'lerini derler
 node devtools/check.mjs                # tüm JS dosyalarının söz dizimini denetler
 npm test                               # birim testleri + (Windows'ta) yardımcı entegrasyon testi
 powershell -File icons/generate-icons.ps1   # tilki logosunu yeniden üretir
 ```
-
-`make-extension-key.mjs` açık anahtarı `devtools/extension-key.json`'a (depoda), özel anahtarı
-`devtools/extension-key.private.json`'a (`.gitignore`'da) yazar; özel anahtar paylaşılmamalıdır.
 
 **CI** (`.github/workflows/ci.yml`): her push/PR'da Windows'ta söz dizimi, üretilen betiklerin
 güncelliği, testler ve EXE derlemesi çalışır. `v*` etiketi itildiğinde EXE'ler o sürümün GitHub
@@ -226,6 +224,12 @@ Release'ine yüklenir (`dist/` artık depoda tutulmaz).
 `build-installer.mjs` çıktısı:
 `dist/FoxDownloader-Kur.exe` (kurulum) ve `dist/FoxDownloader-Kaldir.exe` (kaldırma).
 İkisi de `/sessiz` bayrağıyla arayüzsüz çalışır (test/otomasyon için).
+`dist/` depoya girmez; EXE'ler her sürümde [GitHub Releases](https://github.com/EfeKesgin/FoxDownloader/releases)
+sayfasına eklenir.
+
+> **Özel anahtar:** Paketlenmemiş eklenti için yalnızca `extension-id.json` içindeki açık
+> anahtar gerekir. `make-extension-key.mjs --force` ile üretilen özel anahtar
+> `devtools/extension-key.private.json` dosyasına yazılır ve **asla commit edilmez**.
 
 ### Geliştirici kurulumu (kaynaktan)
 

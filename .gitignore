@@ -7,8 +7,9 @@ node_modules/
 # Geçici / log dosyaları
 *.log
 
-# Eklenti özel anahtarı (make-extension-key.mjs) — asla depoya girmez
+# Eklenti özel anahtarı (asla commit etmeyin)
+devtools/extension-key.json
 devtools/extension-key.private.json
 
-# Dağıtım EXE'leri GitHub Releases'a yüklenir, depoda tutulmaz
+# Derlenen EXE dosyaları GitHub Releases üzerinden dağıtılır
 dist/
