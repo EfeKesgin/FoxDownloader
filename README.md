@@ -85,13 +85,13 @@ indirmeyi engelliyor. FoxDownloader bu yüzden indirmeleri bilgisayarındaki aç
 <details>
 <summary><b>"Kurulum gerekli" ekranı görüyorum.</b></summary>
 
-Tarayıcıyı tamamen kapatıp yeniden aç, ardından Ayarlar → **Kontrol et**'e tıkla.
+Tarayıcıyı tamamen kapatıp yeniden aç, ardından Ayarlar → **Yeniden kontrol et**'e tıkla.
 </details>
 
 <details>
 <summary><b>Kalite seçenekleri gelmedi veya indirme başlamıyor.</b></summary>
 
-Sayfayı yenileyip tekrar dene. Sorun sürerse Ayarlar → **Kontrol et**.
+Sayfayı yenileyip tekrar dene. Sorun sürerse Ayarlar → **Yeniden kontrol et**.
 </details>
 
 <details>
@@ -114,7 +114,8 @@ görüyorsan `FoxDownloader-Kur.exe`'yi yeniden çalıştır.
 <summary><b>İnen dosya MP4 değil, WebM/MKV.</b></summary>
 
 YouTube 1440p ve 4K'da H.264 sunmuyor, bu kalitelerde MP4 (AV1) ya da WebM/MKV iner.
-1080p ve altında her zaman MP4 (H.264 + AAC) seçilir.
+1080p ve altında her zaman MP4 (H.264 + AAC) seçilir. Ayarlar'da kapak resmi gömme açıksa WebM
+videolar MKV olarak kaydedilir, çünkü WebM kapak resmini desteklemez.
 </details>
 
 <details>
@@ -168,6 +169,7 @@ src/         Eklenti: service worker, içerik betikleri, popup ve ayarlar sayfas
 helper/      Yerel yardımcı (C# native messaging host) ve kurulum betikleri
 installer/   Kurulum / kaldırma EXE arayüzleri (C#)
 devtools/    Derleme ve denetim betikleri, sabit eklenti kimliği
+tests/       Birim ve yardımcı entegrasyon testleri (npm test)
 icons/       Eklenti ikonları
 ```
 
