@@ -21,6 +21,17 @@ yardımcı program. Kurulum **tek seferliktir**, yönetici izni gerektirmez ve y
   İsterseniz Ayarlar → **Gözat…** ile hedef klasörü siz seçebilirsiniz.
 - **MP4 önceliği**: YouTube'da 1080p'ye kadar MP4 (H.264+AAC); 1440p/4K'da MP4 (AV1) veya WebM.
   TikTok'ta **filigransız MP4**.
+- **MP3**: YouTube, TikTok ve diğer sitelerde sesi MP3'e dönüştürerek indirme (FFmpeg gerekir).
+- **Oynatma listeleri**: YouTube listesinin tamamı (1080p/720p/MP3); `Liste Adı [kalite]/001 - Başlık.mp4`.
+  İlerleme "Liste 3/12" olarak görünür; silinmiş/özel videolar atlanır ve uyarı olarak gösterilir.
+- **Diğer siteler**: Desteklenmeyen sayfalarda popup, sekme adresini yt-dlp'ye veren genel satırlar sunar.
+- **1080p Yüksek kalite**: YouTube'un kendi 1080p H.264 akışı ~2.5 Mbps'ye sıkıştırılmıştır.
+  Bu satır en iyi kaynağı (4K/1440p) indirir ve yardımcı onu FFmpeg ile 1920x1080 (dikeyde
+  1080x1920) H.264 MP4'e küçültür. Kodlayıcı sırası: NVENC → Quick Sync → AMF → libx264.
+  GTX 1660 Ti'de 33 sn'lik 4K video ~10 sn'de dönüşür (~8 Mbps); işlemciyle ~1x gerçek zaman.
+- **Dosyaya gömme** (Ayarlar): altyazı (TR/EN), kapak resmi, başlık/kanal bilgileri.
+- **yt-dlp otomatik güncelleme**: haftalık kontrol + bir indirme hata verince bir kez güncelleyip
+  yeniden deneme (en fazla saatte bir). Ayarlar'da **Şimdi güncelle** düğmesi.
 
 ## Platform desteği (2026 gerçeği)
 
@@ -28,7 +39,7 @@ yardımcı program. Kurulum **tek seferliktir**, yönetici izni gerektirmez ve y
 |---|---|---|
 | **YouTube (yardımcı)** | **360p – 4K (2160p)** + M4A ses | Yerel yardımcı (`ythelper.exe` + `yt-dlp.exe`), native messaging ile bağlanır. 1080p'ye kadar **MP4 (H.264+AAC)**, 1440p/4K'da **MP4 (AV1)** veya WebM/MKV. FFmpeg zorunludur (görüntü+ses birleştirme). |
 | **TikTok (yardımcı)** | **Filigransız MP4** + MP3 ses | yt-dlp TikTok'u doğrudan çözer (gerekirse JS yoklamasını kendi geçer). Sayfadaki gömülü veriden okuyan tarayıcı içi satırlar da listede kalır, ancak TikTok CDN'i bunları bazı videolarda engeller. |
-| **X (Twitter)** | 480p – 1280x720+ (bitrate varyantları) | Resmî sendikasyon API'si (`cdn.syndication.twimg.com`); giriş gerekmez. `video.twimg.com` doğrudan indirmeye açıktır (`chrome.downloads`). |
+| **X (Twitter)** | 480p – 1280x720+ (bitrate varyantları) | Resmî sendikasyon API'si (`cdn.syndication.twimg.com`); giriş gerekmez. Bulunan doğrudan `video.twimg.com` MP4 adresi yardımcıya verilir (sormadan indirme klasörüne); yardımcı yoksa `chrome.downloads`. |
 
 ## FoxDownloader Yardımcısı (zorunlu)
 
@@ -38,8 +49,11 @@ yardımcı program. Kurulum **tek seferliktir**, yönetici izni gerektirmez ve y
 - `%LOCALAPPDATA%\FoxDownloaderHelper` klasörüne şunları koyar:
   - `ythelper.exe` — bu eklentiye özel, yerel olarak derlenen ~19 KB'lık native messaging host'u,
   - `yt-dlp.exe` — GitHub'dan indirilen açık kaynak indirici (~18 MB),
-  - `ffmpeg.exe` — görüntü+ses birleştirme için **gerekli** (~130 MB indirme; yt-dlp/FFmpeg-Builds;
-    sistemde kurulu bir FFmpeg varsa indirilmez),
+  - `deno.exe` — yt-dlp'nin YouTube imza/n-parametresi çözümü için kullandığı JavaScript çalışma
+    ortamı (~43 MB indirme; denoland/deno; sistemde Deno varsa indirilmez). Deno olmadan yt-dlp
+    "No supported JavaScript runtime" uyarısı verir ve bazı formatlar eksik kalır,
+  - `ffmpeg.exe` + `ffprobe.exe` + DLL'ler — görüntü+ses birleştirme için **gerekli** (~90 MB
+    "shared" derleme; yt-dlp/FFmpeg-Builds; sistemde kurulu bir FFmpeg varsa indirilmez),
   - `com.foxdownloader.ythelper.json` — native messaging manifestosu.
 - `HKCU\Software\...\NativeMessagingHosts\...` kayıt anahtarlarını yazar (Chrome, Chromium,
   Brave, Edge, Vivaldi, Opera). **Yönetici izni gerekmez**, sistem klasörlerine dokunmaz.
@@ -61,8 +75,10 @@ yardımcı program. Kurulum **tek seferliktir**, yönetici izni gerektirmez ve y
   `helper/src/install.tmpl.ps1` (PowerShell kurulum). Kurulum dosyaları `devtools/build-helper.mjs`
   ile bu kaynaklardan üretilir; üretilen dosyalar `helper/` klasöründedir.
 - EXE arayüzlerinin kaynakları: `installer/src/` — `devtools/build-installer.mjs` ile derlenir.
-- İndirilen tek dış dosyalar `yt-dlp.exe` (GitHub Releases) ve gerekirse FFmpeg
-  (yt-dlp/FFmpeg-Builds)'dir.
+- İndirilen tek dış dosyalar `yt-dlp.exe` (GitHub Releases), Deno (denoland/deno) ve gerekirse
+  FFmpeg (yt-dlp/FFmpeg-Builds)'dir. Her biri, yayınlandığı projenin SHA-256 özet dosyasıyla
+  (`SHA2-256SUMS`, `*.sha256sum`, `checksums.sha256`) doğrulanır; uyuşmazsa kurulum durur.
+- yt-dlp'nin sonraki güncellemelerini `yt-dlp -U` yapar (yt-dlp yeni dosyayı kendisi doğrular).
 - `ythelper.exe` yerel olarak derlendiği (imzasız olduğu) için bazı antivirüsler yanlış
   pozitif verebilir; gerekirse klasörü dışlamalara ekleyin.
 - Kodda yalnızca YouTube'un **herkese açık** web (InnerTube) anahtarı bulunur; kullanıcıya ait
@@ -106,6 +122,8 @@ devtools/
 ├── build-helper.mjs       # helper/src → helper/*.cmd|.ps1 üretimi
 ├── build-installer.mjs    # Eklentiyi paketler → dist/FoxDownloader-Kur.exe + Kaldir.exe
 └── check.mjs              # Tüm JS dosyaları için söz dizimi denetimi
+
+tests/                     # node:test — utils, YouTube adres ayrıştırma, yardımcı entegrasyonu
 ```
 
 ### İndirme hatları
@@ -115,7 +133,7 @@ devtools/
    seçtiği klasöre (varsayılan: **İndirilenler**) iner; FFmpeg kuruluysa görüntü+ses birleştirilir.
 2. **frontend**: İçerik betiği sayfa bağlamında `fetch(credentials:'include')` →
    `Blob` → aynı origin `blob:` URL + `<a download>` tıklaması (TikTok'un tarayıcı içi satırları).
-3. **native**: `chrome.downloads.download(url)` — X (Twitter) ve doğrudan URL'li akışlar.
+3. **native**: `chrome.downloads.download(url)` — yardımcı kurulu değilken X ve doğrudan URL'li akışlar.
    İlerleme/hız `chrome.downloads` olaylarından gelir.
 
 ### Yardımcı protokolü (özet)
@@ -123,17 +141,22 @@ devtools/
 `service worker → ythelper.exe` (JSON dizesi, `4 bayt uzunluk + UTF-8` çerçevesi):
 
 ```
-hello|id                                  durum (yt-dlp/ffmpeg/varsayılan klasör)
+hello|id                                  durum (sürüm, yt-dlp/ffmpeg/deno, varsayılan klasör)
 ver|id                                    yt-dlp sürümü
-dl|id|<seçici>|<url>|<ad>|<klasör>|<çerez> indirme başlat (alanlar base64)
+upd|id                                    yt-dlp -U (indirme sürerken reddedilir)
+dl|id|<seçici>|<url>|<ad>|<klasör>|<çerez>|<bayraklar>
+                                          indirme başlat (alanlar base64; bayraklar:
+                                          pl, mp3, subs, thumb, meta, hq1080 — virgülle)
 cancel|id                                 iptal (süreç ağacı sonlandırılır)
 reveal|id|<yol>                           klasörde göster
 pickdir|id|<başlangıç klasörü>            klasör seçme penceresi
 quit                                      çık
 ```
 
-`ythelper.exe → service worker`: `hello`, `ver`, `start`, `p`, `done`, `err`, `canceled`,
-`reveal`, `dir`. Bağlantı kapanınca yardımcı, çalışan tüm `yt-dlp` süreçlerini sonlandırıp çıkar;
+`ythelper.exe → service worker`: `hello` (`v`: yardımcı protokol sürümü, şu an 2), `ver`, `upd`,
+`start`, `p` (liste indirmelerinde `i`/`n`: sıra/toplam), `enc` (hq1080 dönüştürme yüzdesi), `done` (`files`, `w`: atlanan videolar),
+`err`, `canceled`, `reveal`, `dir`. Ad alanındaki `%` işaretleri yt-dlp şablonuna girmeden `%%`
+olarak kaçışlanır. Bağlantı kapanınca yardımcı, çalışan tüm `yt-dlp` süreçlerini sonlandırıp çıkar;
 kuyruk öğesi bir sonraki açılışta kaldığı yerden sürdürülür (yt-dlp `.part` devamı).
 
 ### Kuyruk durumları
@@ -156,11 +179,15 @@ Hata durumunda native indirmelerde tek otomatik yeniden deneme.
   kaydı açılışta okunur. Ardından Ayarlar → **Kontrol et**.
 - **İndirilen dosya MP4 değil WebM/MKV** → 1440p ve 4K'da YouTube H.264 sunmaz; MP4 (AV1) veya
   WebM/MKV inebilir. **1080p ve altında her zaman MP4 (H.264 + AAC)** tercih edilir.
+- **"No supported JavaScript runtime" / bazı kaliteler eksik** → Deno yok ya da yardımcı eski:
+  `FoxDownloader-Kur.exe`'yi yeniden çalıştırın (Ayarlar'da "Deno: Var" görünmeli).
+- **YouTube indirmeleri birden hata vermeye başladı** → Ayarlar → **Şimdi güncelle** (yt-dlp).
 - **"Requested format is not available" hatası** → FFmpeg kurulu değil. Kurulumu yeniden çalıştırıp
   FFmpeg sorusuna Enter deyin (sistemde kurulu FFmpeg varsa otomatik kullanılır).
 - **Dosya yanlış klasöre indi** → Ayarlar → **İndirme klasörü**: boş = İndirilenler; "Gözat…" ile
-  değiştirin. Tarayıcı üzerinden yapılan indirmeler (X) her zaman tarayıcının İndirilenler
-  klasörüne gider (Chrome sınırı).
+  değiştirin. Yalnızca "Tarayıcı" satırlarından yapılan indirmeler tarayıcının İndirilenler
+  klasörüne gider ve tarayıcıda "her dosyada sor" açıksa pencere açar (Chrome sınırı).
+  Yardımcı kuruluyken X dahil tüm platformların ana satırları yardımcıyla, sormadan iner.
 - **TikTok indirilemiyor** → Listenin en üstündeki **yardımcı** satırını kullanın; alttaki tarayıcı
   satırları TikTok CDN korumasından etkilenebilir.
 - **İlk yardımcı indirmesi yavaş başlıyor** → İlk `yt-dlp.exe` çalıştırmasında antivirüs taraması
@@ -176,7 +203,7 @@ Hata durumunda native indirmelerde tek otomatik yeniden deneme.
   yardımcıya devredilir (SABR'ı eklenti içinde çözmek sürekli kırılgan olurdu).
 - Yardımcıda duraklat/devam yoktur (iptal + `.part` üzerinden yeniden deneme vardır).
 - Yardımcı şu an **Windows** içindir; macOS/Linux için ayrı host gerekir.
-- Playlist toplu indirme, altyazı ve kapak indirme sonraki sürümlerde düşünülebilir.
+- Kapak resmi gömme, WebM çıktılarını (1440p/4K VP9) MKV'ye çevirir (WebM kapak desteklemez).
 
 ## Geliştirme ve derleme
 
@@ -185,6 +212,7 @@ node devtools/make-extension-key.mjs   # kimliği gösterir (yoksa üretir; depo
 node devtools/build-helper.mjs         # helper/src → helper/*.cmd|.ps1 üretir
 node devtools/build-installer.mjs      # eklenti + betikleri gömer → dist/ EXE'lerini derler
 node devtools/check.mjs                # tüm JS dosyalarının söz dizimini denetler
+npm test                               # birim testleri + (Windows'ta) yardımcı entegrasyon testi
 powershell -File icons/generate-icons.ps1   # tilki logosunu yeniden üretir
 ```
 

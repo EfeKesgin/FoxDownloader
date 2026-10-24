@@ -52,6 +52,25 @@ function toNum(v) {
 
 // ---------- bağlantı ----------
 
+// Bağlantıyı bizim taraf kapatır. Chrome, disconnect() çağıran tarafa onDisconnect
+// olayını GÖNDERMEZ; bu yüzden port burada elle sıfırlanır, yoksa sonraki istekler
+// "Attempting to use a disconnected port object" hatasıyla düşer.
+function closePort() {
+  const p = port;
+  port = null;
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  }
+  if (p) {
+    try {
+      p.disconnect();
+    } catch {
+      // yoksay
+    }
+  }
+}
+
 function ensurePort() {
   if (port) return port;
   const p = chrome.runtime.connectNative(HOST);
@@ -121,13 +140,7 @@ function maybeDisconnect() {
     touch();
     return;
   }
-  if (port) {
-    try {
-      port.disconnect();
-    } catch {
-      // yoksay
-    }
-  }
+  closePort();
 }
 
 function resolvePending(id, value) {
@@ -148,8 +161,23 @@ function onMessage(msg) {
 
   if (ev === 'p') {
     if (id) {
-      dispatch({ ev: 'p', id, d: toNum(msg.d), t: toNum(msg.t), s: toNum(msg.s), e: toNum(msg.e) });
+      dispatch({
+        ev: 'p',
+        id,
+        d: toNum(msg.d),
+        t: toNum(msg.t),
+        s: toNum(msg.s),
+        e: toNum(msg.e),
+        i: toNum(msg.i),
+        n: toNum(msg.n)
+      });
     }
+    return;
+  }
+
+  // Yüksek kalite 1080p: indirme bitti, FFmpeg küçültüyor (yüzde).
+  if (ev === 'enc') {
+    if (id) dispatch({ ev: 'enc', id, pct: toNum(msg.pct) });
     return;
   }
 
@@ -165,7 +193,14 @@ function onMessage(msg) {
     if (id) activeDl.delete(id);
     updateKeepAlive();
     resolvePending(id, msg);
-    dispatch({ ev: 'done', id, file: msg.f ? unb64(msg.f) : '', bytes: toNum(msg.bytes) });
+    dispatch({
+      ev: 'done',
+      id,
+      file: msg.f ? unb64(msg.f) : '',
+      bytes: toNum(msg.bytes),
+      files: toNum(msg.files),
+      warning: msg.w ? unb64(msg.w) : ''
+    });
     return;
   }
 
@@ -190,6 +225,9 @@ function onMessage(msg) {
       ok: !!msg.ytdlp,
       ytdlp: !!msg.ytdlp,
       ffmpeg: !!msg.ffmpeg,
+      deno: !!msg.deno,
+      // 1: Deno/güncelleme/bayrak desteği olmayan eski yardımcı (kurulum yenilenmeli)
+      helperV: toNum(msg.v) || 1,
       dir: msg.dir ? unb64(msg.dir) : '',
       exe: msg.exe ? unb64(msg.exe) : '',
       ytdlpV: msg.ytdlpV ? unb64(msg.ytdlpV) : '',
@@ -222,6 +260,17 @@ export function onHelperEvent(fn) {
 
 // ---------- komutlar ----------
 
+// Port bir şekilde kopmuş ama fark edilmemişse yeni bağlantıyla bir kez yeniden gönderir.
+function postWithReconnect(p, payload) {
+  try {
+    p.postMessage(payload);
+  } catch (err) {
+    if (!/disconnected port/i.test(String((err && err.message) || err))) throw err;
+    if (port === p) port = null;
+    ensurePort().postMessage(payload);
+  }
+}
+
 function request(cmd, fields, opts = {}) {
   let p;
   try {
@@ -244,7 +293,7 @@ function request(cmd, fields, opts = {}) {
     }
     pending.set(id, { resolve, reject, timer });
     try {
-      p.postMessage(payload);
+      postWithReconnect(p, payload);
     } catch (err) {
       pending.delete(id);
       if (timer) clearTimeout(timer);
@@ -271,6 +320,8 @@ export async function getStatus(force = false) {
       ok: false,
       ytdlp: false,
       ffmpeg: false,
+      deno: false,
+      helperV: 0,
       dir: '',
       exe: '',
       ytdlpV: '',
@@ -298,15 +349,45 @@ export async function getVersion() {
   }
 }
 
+// yt-dlp'yi günceller (yt-dlp -U). İndirme sürerken yardımcı isteği reddeder.
+// Dönüş: { ok, changed, version, message }
+export async function updateYtdlp() {
+  const st = await getStatus();
+  if (!st.ok) return { ok: false, changed: false, version: '', message: 'YARDIMCI_KURULU_DEGIL' };
+  if (st.helperV < 2) {
+    return { ok: false, changed: false, version: st.ytdlpV || '', message: 'YARDIMCI_ESKI' };
+  }
+  try {
+    const res = await request('upd', [], { timeoutMs: 330000 });
+    const out = {
+      ok: !!(res && res.ok),
+      changed: !!(res && res.changed),
+      version: res && res.v ? unb64(res.v) : '',
+      message: res && res.m ? unb64(res.m) : ''
+    };
+    if (out.version && status) status.ytdlpV = out.version;
+    return out;
+  } catch (err) {
+    return { ok: false, changed: false, version: '', message: String((err && err.message) || err) };
+  }
+}
+
 // İndirme başlatır; tamamlanma/ilerleme olayları onHelperEvent ile gelir.
 export async function startDownload(input) {
   const st = await getStatus();
   if (!st.ok) throw new Error(st.error === 'YT_DLP_YOK' ? 'YT_DLP_YOK' : 'YARDIMCI_KURULU_DEGIL');
   // DİKKAT: kimlik yalnızca opts.id ile gider; alan listesine kimlik EKLENMEZ,
-  // aksi halde tüm alanlar bir sağa kayar (shim: dl|id|secici|url|ad|dizin|çerez).
+  // aksi halde tüm alanlar bir sağa kayar (shim: dl|id|secici|url|ad|dizin|çerez|bayraklar).
   await request(
     'dl',
-    [input.selector || 'bv*+ba/b', input.url, input.name || 'video', input.dir || '', input.cookies || ''],
+    [
+      input.selector || 'bv*+ba/b',
+      input.url,
+      input.name || 'video',
+      input.dir || '',
+      input.cookies || '',
+      Array.isArray(input.flags) ? input.flags.join(',') : ''
+    ],
     { id: input.id, timeoutMs: 30000 }
   );
 }
@@ -314,7 +395,7 @@ export async function startDownload(input) {
 export function cancelDownload(id) {
   activeDl.delete(id);
   try {
-    ensurePort().postMessage('cancel|' + id);
+    postWithReconnect(ensurePort(), 'cancel|' + id);
     touch();
   } catch {
     // yoksay
@@ -365,11 +446,7 @@ export async function diagnose() {
   }
 
   // Ana bağlantıyı kapat; ham deneme temiz bir port kullansın.
-  try {
-    if (port) port.disconnect();
-  } catch {
-    // yoksay
-  }
+  closePort();
 
   try {
     const p = chrome.runtime.connectNative(HOST);

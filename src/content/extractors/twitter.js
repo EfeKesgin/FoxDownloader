@@ -115,7 +115,28 @@ globalThis.VD.extractors.twitter = (() => {
     }
 
     formats.sort((a, b) => (b.sortKey || 0) - (a.sortKey || 0));
+
+    // Yardımcı kuruluysa doğrudan MP4 adresleri de yardımcıyla iner: chrome.downloads
+    // tarayıcının "her dosyada nereye kaydedileceğini sor" ayarına uyar ve pencere açar;
+    // yardımcı ise sormadan seçili indirme klasörüne kaydeder.
+    if (await helperReady()) {
+      for (const f of formats) {
+        f.kind = 'helper-video';
+        f.via = 'helper';
+        f.selector = 'b';
+      }
+    }
     return { info, formats };
+  }
+
+  async function helperReady() {
+    try {
+      const res = await chrome.runtime.sendMessage({ type: P.HELPER_STATUS });
+      const st = res && res.status;
+      return !!(st && st.ok && st.ytdlp);
+    } catch {
+      return false;
+    }
   }
 
   return { platform: PLATFORM, getContext, getFormats };

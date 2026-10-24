@@ -137,13 +137,13 @@ namespace FoxDownloader
             pnlSetup.Controls.Add(NewLabel("Kurulacaklar:", 9.5f, Theme.Text, true, 16, 14, 300, 20));
             pnlSetup.Controls.Add(NewLabel(
                 "• Yardımcı servis (ythelper.exe) — yerel C# derleyicisiyle derlenir\r\n" +
-                "• yt-dlp.exe (~18 MB, GitHub'dan indirilir)\r\n" +
+                "• yt-dlp (~18 MB) + Deno (~43 MB) — GitHub'dan, SHA-256 doğrulamalı\r\n" +
                 "• 6 tarayıcı için native messaging kaydı (HKCU — yönetici gerekmez)\r\n" +
                 "• Eklenti klasörü: %LOCALAPPDATA%\\FoxDownloader\\Eklenti",
                 9f, Theme.Muted, false, 16, 38, 545, 76));
 
             chkFfmpeg = new CheckBox();
-            chkFfmpeg.Text = "FFmpeg de indir (~130 MB)";
+            chkFfmpeg.Text = "FFmpeg de indir (~90 MB)";
             chkFfmpeg.Checked = true;
             chkFfmpeg.ForeColor = Theme.Text;
             chkFfmpeg.BackColor = Color.Transparent;

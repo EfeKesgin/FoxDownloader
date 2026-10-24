@@ -16,6 +16,7 @@ import {
   retryItem,
   clearFinished,
   revealItem,
+  updateYtdlpNow,
   frontendProgress,
   frontendDone
 } from './queue.js';
@@ -305,6 +306,7 @@ const handlers = {
     return { ok: !!st.ok, status: st };
   },
   [P().HELPER_VERSION]: async () => ({ ok: true, version: await helperVersion() }),
+  [P().YTDLP_UPDATE]: async () => ({ ok: true, result: await updateYtdlpNow() }),
   [P().HELPER_DIAG]: async () => ({ ok: true, diag: await helperDiagnose() }),
   [P().OPEN_OPTIONS]: async () => {
     try {

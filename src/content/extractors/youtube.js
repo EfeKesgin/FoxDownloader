@@ -25,23 +25,41 @@ globalThis.VD.extractors.youtube = (() => {
   function getContext(url = location.href) {
     try {
       const u = new URL(url);
+      const list = validListId(u.searchParams.get('list'));
       if (u.hostname.endsWith('youtu.be')) {
         const id = u.pathname.slice(1).split('/')[0];
-        return id ? context(id) : null;
+        return id ? context(id, list) : null;
       }
       if (u.pathname === '/watch') {
         const id = u.searchParams.get('v');
-        return id ? context(id) : null;
+        return id ? context(id, list) : null;
+      }
+      if (u.pathname === '/playlist' && list) {
+        return { platform: PLATFORM, videoId: null, listId: list, key: 'ytpl:' + list };
       }
       const m = u.pathname.match(/^\/(shorts|embed|live)\/([\w-]{6,20})/);
-      return m ? context(m[2]) : null;
+      return m ? context(m[2], null) : null;
     } catch {
       return null;
     }
   }
 
-  function context(videoId) {
-    return { platform: PLATFORM, videoId, key: 'yt:' + videoId };
+  function validListId(id) {
+    return id && /^[\w-]{2,64}$/.test(id) ? id : null;
+  }
+
+  function context(videoId, listId) {
+    return { platform: PLATFORM, videoId, listId: listId || null, key: 'yt:' + videoId + (listId ? ':' + listId : '') };
+  }
+
+  // Oynatma listesinin adı: liste sayfasında sekme başlığı, izleme sayfasında yan panel.
+  function playlistTitle(ctx) {
+    if (!ctx.videoId) return document.title.replace(/\s*-\s*YouTube\s*$/, '').trim() || 'YouTube listesi';
+    const el = document.querySelector(
+      'ytd-playlist-panel-renderer #header-description h3 a, ytd-playlist-panel-renderer .title'
+    );
+    const text = el && el.textContent ? el.textContent.trim() : '';
+    return text || 'YouTube listesi ' + ctx.listId;
   }
 
   function playerResponseFromDom() {
@@ -137,6 +155,7 @@ globalThis.VD.extractors.youtube = (() => {
   }
 
   async function getFormats(ctx) {
+    if (!ctx.videoId) return getPlaylistFormats(ctx);
     const player = await getPlayerResponse(ctx.videoId);
     if (!player) {
       throw Object.assign(new Error('YouTube video bilgisi alınamadı'), {
@@ -153,6 +172,7 @@ globalThis.VD.extractors.youtube = (() => {
       author: details.author || '',
       duration: Number(details.lengthSeconds) || 0,
       videoId: ctx.videoId,
+      thumb: 'https://i.ytimg.com/vi/' + encodeURIComponent(ctx.videoId) + '/mqdefault.jpg',
       note: null
     };
 
@@ -184,6 +204,7 @@ globalThis.VD.extractors.youtube = (() => {
 
     const helperStatus = await getHelperStatus();
     const helperRows = helperFormats(helperStatus, ctx.videoId);
+    if (ctx.listId) helperRows.push(...playlistFormats(helperStatus, ctx, playlistTitle(ctx)));
     const helperOk = helperRows.length > 0;
     info.helper = {
       installed: !!(helperStatus && helperStatus.ok && helperStatus.ytdlp),
@@ -244,36 +265,81 @@ globalThis.VD.extractors.youtube = (() => {
     }
   }
 
+  function videoSelector(h, hasFfmpeg) {
+    if (!hasFfmpeg) {
+      // FFmpeg yok: birleştirme yapılamaz → yalnızca video+ses içeren tek
+      // parça akışlar. (YouTube çoğu videoda bunları artık sunmuyor.)
+      return 'b[height<=' + h + '][ext=mp4]/b[height<=' + h + ']';
+    }
+    if (h <= 1080) {
+      // 1) H.264 (en uyumlu) + AAC  2) MP4 konteynerli diğer kodlayıcılar
+      // 3) herhangi bir akış   4) tek parça yedek
+      return (
+        'bv[height<=' + h + '][vcodec^=avc1]+ba[ext=m4a]/' +
+        'bv[height<=' + h + '][ext=mp4]+ba[ext=m4a]/' +
+        'bv[height<=' + h + ']+ba/' +
+        'b[height<=' + h + ']'
+      );
+    }
+    // 1440p/2160p: H.264 yok; aynı çözünürlükte MP4 (genelde AV1),
+    // yoksa WebM/MKV (VP9/AV1) alınır; en sonda daha düşük çözünürlük.
+    return (
+      'bv[height=' + h + '][vcodec^=avc1]+ba[ext=m4a]/' +
+      'bv[height=' + h + '][ext=mp4]+ba[ext=m4a]/' +
+      'bv[height=' + h + ']+ba/' +
+      'b[height<=' + h + ']'
+    );
+  }
+
+  function helperReady(status) {
+    return !!(status && status.ok && status.ytdlp);
+  }
+
+  // MP3 dönüştürme FFmpeg ister; yoksa satır gösterilmez.
+  function mp3Row(id, kind, url, label) {
+    return {
+      id,
+      kind,
+      label,
+      tag: 'mp3',
+      ext: 'mp3',
+      url,
+      via: 'helper',
+      selector: 'ba/b',
+      flags: ['mp3'],
+      disabled: false,
+      note: null
+    };
+  }
+
   function helperFormats(status, videoId) {
     const watchUrl = 'https://www.youtube.com/watch?v=' + encodeURIComponent(videoId);
-    if (!status || !status.ok || !status.ytdlp) return [];
+    if (!helperReady(status)) return [];
     const hasFfmpeg = !!status.ffmpeg;
     const max = hasFfmpeg ? 2160 : 720;
     const rows = [];
     for (const row of HELPER_LADDER) {
       const h = row.height;
       if (h > max) continue;
-      let selector;
-      if (!hasFfmpeg) {
-        // FFmpeg yok: birleştirme yapılamaz → yalnızca video+ses içeren tek
-        // parça akışlar. (YouTube çoğu videoda bunları artık sunmuyor.)
-        selector = 'b[height<=' + h + '][ext=mp4]/b[height<=' + h + ']';
-      } else if (h <= 1080) {
-        // 1) H.264 (en uyumlu) + AAC  2) MP4 konteynerli diğer kodlayıcılar
-        // 3) herhangi bir akış   4) tek parça yedek
-        selector =
-          'bv[height<=' + h + '][vcodec^=avc1]+ba[ext=m4a]/' +
-          'bv[height<=' + h + '][ext=mp4]+ba[ext=m4a]/' +
-          'bv[height<=' + h + ']+ba/' +
-          'b[height<=' + h + ']';
-      } else {
-        // 1440p/2160p: H.264 yok; aynı çözünürlükte MP4 (genelde AV1),
-        // yoksa WebM/MKV (VP9/AV1) alınır; en sonda daha düşük çözünürlük.
-        selector =
-          'bv[height=' + h + '][vcodec^=avc1]+ba[ext=m4a]/' +
-          'bv[height=' + h + '][ext=mp4]+ba[ext=m4a]/' +
-          'bv[height=' + h + ']+ba/' +
-          'b[height<=' + h + ']';
+      const selector = videoSelector(h, hasFfmpeg);
+      if (h === 1080 && hasFfmpeg) {
+        // YouTube'un 1080p akışı ~2.5 Mbps'ye sıkıştırılmış; en iyi kaynak (4K/1440p)
+        // indirilip yardımcıda 1080p'ye küçültülürse çok daha keskin olur. Kaynakta
+        // 1080p üstü yoksa normal 1080p seçicisine düşer.
+        rows.push({
+          id: 'helper-1080hq',
+          kind: 'helper-video',
+          label: '1080p • Yüksek kalite (4K kaynaktan)',
+          tag: '1080p HQ',
+          ext: 'mp4',
+          height: 1080,
+          url: watchUrl,
+          via: 'helper',
+          selector: 'bv*[height>1080]+ba/' + selector,
+          flags: ['hq1080'],
+          disabled: false,
+          note: 'daha keskin; dönüştürme birkaç dakika sürebilir'
+        });
       }
       rows.push({
         id: 'helper-' + h,
@@ -301,7 +367,62 @@ globalThis.VD.extractors.youtube = (() => {
       disabled: false,
       note: null
     });
+    if (hasFfmpeg) rows.push(mp3Row('helper-mp3', 'helper-audio', watchUrl, 'Ses • MP3 (Yardımcı)'));
     return rows;
+  }
+
+  // Oynatma listesinin tamamı (yt-dlp --yes-playlist): liste adıyla açılan bir
+  // klasöre "001 - Başlık" sırasıyla iner.
+  function playlistFormats(status, ctx, title) {
+    if (!helperReady(status)) return [];
+    const url = ctx.videoId
+      ? 'https://www.youtube.com/watch?v=' + encodeURIComponent(ctx.videoId) + '&list=' + encodeURIComponent(ctx.listId)
+      : 'https://www.youtube.com/playlist?list=' + encodeURIComponent(ctx.listId);
+    const hasFfmpeg = !!status.ffmpeg;
+    const rows = [];
+    for (const h of hasFfmpeg ? [1080, 720] : [720]) {
+      rows.push({
+        id: 'pl-' + h,
+        kind: 'helper-playlist',
+        label: 'Tüm liste • ' + h + 'p MP4',
+        tag: h + 'p',
+        ext: 'mp4',
+        url,
+        via: 'helper',
+        selector: videoSelector(h, hasFfmpeg),
+        flags: ['pl'],
+        playlistTitle: title,
+        disabled: false,
+        note: null
+      });
+    }
+    if (hasFfmpeg) {
+      const row = mp3Row('pl-mp3', 'helper-playlist', url, 'Tüm liste • MP3 ses');
+      row.flags = ['pl', 'mp3'];
+      row.playlistTitle = title;
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  // Liste sayfası (/playlist?list=...): tek video yok, yalnızca liste satırları.
+  async function getPlaylistFormats(ctx) {
+    const helperStatus = await getHelperStatus();
+    const title = playlistTitle(ctx);
+    const info = {
+      platform: PLATFORM,
+      title,
+      author: '',
+      duration: 0,
+      videoId: null,
+      note: 'Listedeki her video, liste adıyla açılan klasöre sırayla iner.',
+      helper: {
+        installed: helperReady(helperStatus),
+        ffmpeg: !!(helperStatus && helperStatus.ffmpeg),
+        dir: (helperStatus && helperStatus.dir) || ''
+      }
+    };
+    return { info, formats: playlistFormats(helperStatus, ctx, title) };
   }
 
   // Sniffer'da yakalanan googlevideo URL'leriyle kilitli (cipher'lı) formatları açar.

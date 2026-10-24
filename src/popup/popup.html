@@ -8,39 +8,43 @@
 </head>
 <body>
   <header class="top">
-    <div class="logo" style="background:none;padding:0">
-      <img src="../../icons/icon48.png" width="34" height="34" alt="FoxDownloader" style="display:block;border-radius:10px" />
-    </div>
+    <img class="logo" src="../../icons/icon48.png" width="32" height="32" alt="" />
     <div class="brand">
       <div class="name">FoxDownloader</div>
-      <div class="sub">YouTube • X • TikTok</div>
+      <div class="sub" id="helperLine"><span class="dot"></span><span id="helperText">Yardımcı kontrol ediliyor…</span></div>
     </div>
-    <label class="conc" title="Eşzamanlı indirme sayısı">
-      <span>Eşzamanlı</span>
-      <select id="concurrency">
-        <option value="1">1</option>
-        <option value="2">2</option>
-        <option value="3">3</option>
-        <option value="4">4</option>
-        <option value="5">5</option>
-      </select>
-    </label>
-    <button id="openSettings" class="gear" title="Ayarlar (YouTube Yardımcısı)">⚙</button>
+    <button id="openSettings" class="iconbtn" title="Ayarlar" aria-label="Ayarlar">
+      <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6a.5.5 0 0 0 .1-.6l-2-3.5a.5.5 0 0 0-.6-.2l-2.5 1a7.4 7.4 0 0 0-1.7-1L14.4 2.4A.5.5 0 0 0 14 2h-4a.5.5 0 0 0-.5.4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1a.5.5 0 0 0-.6.2l-2 3.5a.5.5 0 0 0 .1.6L4.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6a.5.5 0 0 0-.1.6l2 3.5c.1.2.4.3.6.2l2.5-1c.5.4 1.1.7 1.7 1l.4 2.7c0 .2.2.4.5.4h4c.3 0 .5-.2.5-.4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1c.2.1.5 0 .6-.2l2-3.5a.5.5 0 0 0-.1-.6zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
+    </button>
   </header>
 
-  <nav class="tabs">
-    <button class="tab active" data-tab="page">Bu Sayfa</button>
-    <button class="tab" data-tab="queue">Kuyruk <span id="queueCount" class="pill" hidden>0</span></button>
+  <div id="updateBanner" class="banner" hidden>
+    <span class="spinner"></span><span>yt-dlp güncelleniyor… YouTube indirmeleri birazdan başlayacak.</span>
+  </div>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="page" role="tab">Bu sayfa</button>
+    <button class="tab" data-tab="queue" role="tab">İndirmeler <span id="queueCount" class="pill" hidden>0</span></button>
   </nav>
 
   <main>
     <section id="tab-page" class="tabpane active">
-      <div id="pageContent" class="state">Formatlar aranıyor…</div>
+      <div id="pageContent" class="state"><span class="spinner"></span>Formatlar aranıyor…</div>
     </section>
     <section id="tab-queue" class="tabpane">
-      <div id="queueContent" class="state">Kuyruk boş.</div>
+      <div id="queueContent" class="state">Henüz indirme yok.</div>
       <footer class="queue-foot">
-        <button id="clearFinished">Bitenleri temizle</button>
+        <label class="conc" title="Aynı anda kaç indirme yapılsın">
+          Aynı anda
+          <select id="concurrency">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+        </label>
+        <button id="clearFinished" class="textbtn">Bitenleri temizle</button>
       </footer>
     </section>
   </main>

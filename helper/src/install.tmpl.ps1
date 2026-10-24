@@ -4,8 +4,11 @@
 # Bu betik (FoxDownloader-Yardimci-Kur.cmd ile birlikte calistirilir):
 #   1) ythelper.exe  : yerel C# derleyicisiyle derlenir (native messaging host)
 #   2) yt-dlp.exe    : GitHub'dan indirilir (~18 MB)
-#   3) FFmpeg        : istege bagli indirilir (1080p+ icin birlestirme)
-#   4) Native messaging manifestosu + kayit defteri anahtarlari yazilir
+#   3) Deno          : YouTube imza cozumu icin JS calisma ortami (~43 MB)
+#   4) FFmpeg        : istege bagli indirilir (goruntu+ses birlestirme, ~90 MB)
+#   5) Native messaging manifestosu + kayit defteri anahtarlari yazilir
+#
+# Indirilen her dosya, yayinlandigi projenin SHA-256 ozetiyle dogrulanir.
 #
 # Kaldirma: FoxDownloader-Yardimci-Kaldir.cmd
 # Sessiz:   FoxDownloader-Yardimci-Kur.cmd -Sessiz
@@ -91,6 +94,41 @@ function Get-File($url, $out) {
     Move-Item -Force $part $out
 }
 
+function Get-Text($url) {
+    Add-Type -AssemblyName System.Net.Http | Out-Null
+    $client = New-Object System.Net.Http.HttpClient
+    $client.Timeout = [TimeSpan]::FromMinutes(2)
+    try {
+        return $client.GetStringAsync($url).GetAwaiter().GetResult()
+    } finally {
+        $client.Dispose()
+    }
+}
+
+# Yayinlanan ozet dosyasindan beklenen SHA-256 degerini okur. Iki bicim desteklenir:
+# "<ozet>  <dosya>" satirlari (yt-dlp, FFmpeg-Builds) ve tek ozet iceren dosya (Deno).
+function Get-ExpectedHash($sumsUrl, $fileName) {
+    $text = Get-Text $sumsUrl
+    foreach ($row in ($text -split "`r?`n")) {
+        if ($row -match '^\s*([0-9a-fA-F]{64})\s+\*?(\S+)\s*$' -and $Matches[2] -eq $fileName) {
+            return $Matches[1].ToLowerInvariant()
+        }
+    }
+    $all = [regex]::Matches($text, '\b[0-9a-fA-F]{64}\b')
+    if ($all.Count -eq 1) { return $all[0].Value.ToLowerInvariant() }
+    throw ('Ozet dosyasinda bulunamadi: ' + $fileName)
+}
+
+# Dosyanin SHA-256 ozetini dogrular; uyusmazsa dosyayi silip hata verir.
+function Assert-Hash($path, $expected, $label) {
+    $actual = (Get-FileHash -Algorithm SHA256 -Path $path).Hash.ToLowerInvariant()
+    if ($actual -ne $expected) {
+        Remove-Item -Force $path -ErrorAction SilentlyContinue
+        throw ($label + ' SHA-256 dogrulamasi basarisiz (dosya bozuk ya da degistirilmis)')
+    }
+    Good ($label + ' SHA-256 dogrulandi')
+}
+
 Line ''
 Line '========================================================' 'DarkCyan'
 Line '  FoxDownloader  -  Yardimci Kurulumu' 'DarkCyan'
@@ -107,7 +145,7 @@ try {
 }
 
 # ---------------------------------------------------------------------------
-Step '1/6  ythelper.exe derleniyor (yerel C# derleyicisi)'
+Step '1/7  ythelper.exe derleniyor (yerel C# derleyicisi)'
 # ---------------------------------------------------------------------------
 $csPath  = Join-Path $helperDir 'ythelper.cs'
 $exePath = Join-Path $helperDir 'ythelper.exe'
@@ -131,7 +169,7 @@ if (-not (Test-Path $exePath)) {
 Good ('ythelper.exe hazir (' + [math]::Round((Get-Item $exePath).Length / 1KB) + ' KB)')
 
 # ---------------------------------------------------------------------------
-Step '2/6  yt-dlp indiriliyor'
+Step '2/7  yt-dlp indiriliyor'
 # ---------------------------------------------------------------------------
 $ytdlp = Join-Path $helperDir 'yt-dlp.exe'
 $needYtdlp = $true
@@ -145,13 +183,19 @@ if ((Test-Path $ytdlp) -and ((Get-Item $ytdlp).Length -gt 5MB)) {
     }
 }
 if ($needYtdlp) {
+    $ytdlpNew = $ytdlp + '.yeni'
     try {
-        Get-File 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe' $ytdlp
+        Get-File 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe' $ytdlpNew
+        $expected = Get-ExpectedHash 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS' 'yt-dlp.exe'
+        Assert-Hash $ytdlpNew $expected 'yt-dlp.exe'
+        Move-Item -Force $ytdlpNew $ytdlp
     } catch {
+        Remove-Item -Force $ytdlpNew -ErrorAction SilentlyContinue
         Fail ('yt-dlp indirilemedi: ' + $_.Exception.Message + '  (Internet baglantinizi kontrol edin)')
     }
     Good ('yt-dlp.exe indirildi (' + [math]::Round((Get-Item $ytdlp).Length / 1MB, 1) + ' MB)')
 }
+Note 'yt-dlp bundan sonra eklenti tarafindan haftalik olarak guncellenir.'
 
 $verOut = Join-Path $env:TEMP ('vd-ver-' + [guid]::NewGuid().ToString('N') + '.txt')
 try {
@@ -173,7 +217,45 @@ try {
 }
 
 # ---------------------------------------------------------------------------
-Step '3/6  FFmpeg kontrolu (1080p+ icin goruntu+ses birlestirme)'
+Step '3/7  Deno (YouTube icin JavaScript calisma ortami)'
+# ---------------------------------------------------------------------------
+# yt-dlp, YouTube'un imza/n-parametresi bulmacasini cozmek icin bir JS calisma
+# ortamina ihtiyac duyar; Deno olmadan bazi formatlar eksik kalir.
+$denoLocal = Join-Path $helperDir 'deno.exe'
+$denoCmd = Get-Command deno -ErrorAction SilentlyContinue
+if (Test-Path $denoLocal) {
+    Good 'Deno yardimci klasorunde bulundu'
+} elseif ($denoCmd) {
+    Good ('Deno sistemde bulundu: ' + $denoCmd.Source)
+} else {
+    $denoAsset = 'deno-x86_64-pc-windows-msvc.zip'
+    $denoZip = Join-Path $env:TEMP ('vd-' + $denoAsset)
+    try {
+        Get-File ('https://github.com/denoland/deno/releases/latest/download/' + $denoAsset) $denoZip
+        $expected = Get-ExpectedHash ('https://github.com/denoland/deno/releases/latest/download/' + $denoAsset + '.sha256sum') $denoAsset
+        Assert-Hash $denoZip $expected 'Deno'
+        Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
+        $arch = [IO.Compression.ZipFile]::OpenRead($denoZip)
+        try {
+            foreach ($entry in $arch.Entries) {
+                if ($entry.Name -eq 'deno.exe') {
+                    [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $denoLocal, $true)
+                }
+            }
+        } finally {
+            $arch.Dispose()
+        }
+        if (Test-Path $denoLocal) { Good 'Deno kuruldu' } else { Warn2 'Deno arsivden cikarilamadi' }
+    } catch {
+        Warn2 ('Deno indirilemedi: ' + $_.Exception.Message)
+        Warn2 'Deno olmadan YouTube indirmeleri calisir ama bazi kaliteler eksik olabilir.'
+    } finally {
+        Remove-Item -Force $denoZip -ErrorAction SilentlyContinue
+    }
+}
+
+# ---------------------------------------------------------------------------
+Step '4/7  FFmpeg kontrolu (1080p+ icin goruntu+ses birlestirme)'
 # ---------------------------------------------------------------------------
 $ffLocal = Join-Path $helperDir 'ffmpeg.exe'
 $ffPath = $null
@@ -194,19 +276,25 @@ if (-not $ffPath) {
         Line '   FFmpeg, goruntu ve sesi birlestirmek icin GEREKLIDIR.' 'White'
         Line '   YouTube artik videolari tek parca sunmadigi icin FFmpeg olmadan' 'White'
         Line '   indirmeler buyuk olasilikla "format bulunamadi" hatasiyla biter.' 'White'
-        Line '   FFmpeg acik kaynaklidir; ~130 MB indirilir.' 'White'
+        Line '   FFmpeg acik kaynaklidir; ~90 MB indirilir.' 'White'
         $answer = Read-Host '   FFmpeg indirilsin mi? [E/h]'
         if ($answer -match '^(?i)\s*h') { $want = $false }
     }
     if ($want -and (-not $skipFfmpeg)) {
-        $zip = Join-Path $env:TEMP 'vd-ffmpeg.zip'
+        # "shared" derleme: ffmpeg/ffprobe + DLL'ler; tek parca derlemenin (~200 MB)
+        # yarisindan az indirme.
+        $ffAsset = 'ffmpeg-master-latest-win64-gpl-shared.zip'
+        $zip = Join-Path $env:TEMP ('vd-' + $ffAsset)
         try {
-            Get-File 'https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip' $zip
+            Get-File ('https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/' + $ffAsset) $zip
+            $expected = Get-ExpectedHash 'https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/checksums.sha256' $ffAsset
+            Assert-Hash $zip $expected 'FFmpeg'
             Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
             $arch = [IO.Compression.ZipFile]::OpenRead($zip)
             try {
                 foreach ($entry in $arch.Entries) {
-                    if ($entry.Name -eq 'ffmpeg.exe' -or $entry.Name -eq 'ffprobe.exe') {
+                    $inBin = $entry.FullName -match '/bin/[^/]+\.(exe|dll)$'
+                    if ($inBin -and $entry.Name -ne 'ffplay.exe') {
                         [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, (Join-Path $helperDir $entry.Name), $true)
                     }
                 }
@@ -231,7 +319,7 @@ if (-not $ffPath) {
 }
 
 # ---------------------------------------------------------------------------
-Step '4/6  Native messaging manifestosu yaziliyor'
+Step '5/7  Native messaging manifestosu yaziliyor'
 # ---------------------------------------------------------------------------
 $manifestPath = Join-Path $helperDir ($hostName + '.json')
 $manifest = [ordered]@{
@@ -246,7 +334,7 @@ Write-Text $manifestPath $json $false
 Good $manifestPath
 
 # ---------------------------------------------------------------------------
-Step '5/6  Tarayici kayit defteri anahtarlari (HKCU, yonetici gerekmez)'
+Step '6/7  Tarayici kayit defteri anahtarlari (HKCU, yonetici gerekmez)'
 # ---------------------------------------------------------------------------
 $browserBases = @(
     'HKCU:\Software\Google\Chrome',
@@ -291,7 +379,7 @@ if (Test-Path $oldDir) {
 if ($oldCleaned -gt 0) { Note ('Eski surum kalintilari temizlendi (' + $oldCleaned + ')') }
 
 # ---------------------------------------------------------------------------
-Step '6/6  Ozet'
+Step '7/7  Ozet'
 # ---------------------------------------------------------------------------
 Line ''
 Line '  Kurulum tamamlandi.' 'Green'

@@ -163,7 +163,7 @@ namespace FoxDownloader
             pnlInfo.Controls.Add(NewLabel("Kaldırılacaklar:", 9.5f, Theme.Text, true, 16, 14, 300, 20));
             pnlInfo.Controls.Add(NewLabel(
                 "• Yardımcı servis: %LOCALAPPDATA%\\FoxDownloaderHelper\r\n" +
-                "     (ythelper.exe, yt-dlp.exe, FFmpeg, manifest)\r\n" +
+                "     (ythelper.exe, yt-dlp.exe, Deno, FFmpeg, manifest)\r\n" +
                 "• Tarayıcı kayıtları: Chrome, Chromium, Brave, Edge, Vivaldi, Opera\r\n" +
                 "• Eklenti klasörü: %LOCALAPPDATA%\\FoxDownloader\\Eklenti",
                 9f, Theme.Muted, false, 16, 38, 545, 92));

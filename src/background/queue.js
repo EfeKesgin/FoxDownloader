@@ -5,15 +5,34 @@ import {
   startDownload as helperStartDownload,
   cancelDownload as helperCancelDownload,
   reveal as helperReveal,
+  updateYtdlp as helperUpdateYtdlp,
+  getStatus as helperGetStatus,
+  activeCount as helperActiveCount,
   onHelperEvent
 } from './helper.js';
 
 const STORAGE_QUEUE = 'vd_queue';
 const STORAGE_SETTINGS = 'vd_settings';
+const STORAGE_UPDATE = 'vd_ytdlp_update';
 const MAX_ITEMS = 200;
 const EMIT_THROTTLE_MS = 400;
 const SAVE_DEBOUNCE_MS = 300;
-const DEFAULT_SETTINGS = { concurrency: 3, autoRetry: true, helperDir: '', helperCookies: '' };
+const DEFAULT_SETTINGS = {
+  concurrency: 3,
+  autoRetry: true,
+  helperDir: '',
+  helperCookies: '',
+  autoUpdate: true,
+  embedSubs: false,
+  embedThumb: false,
+  embedMeta: false
+};
+
+// yt-dlp güncelleme sıklığı: haftalık kontrol; bir hata sonrası en fazla saatte bir.
+const UPDATE_EVERY_MS = 7 * 24 * 3600 * 1000;
+const UPDATE_ON_ERROR_MIN_MS = 3600 * 1000;
+// Öğe bazında izinli bayraklar (ayardan gelenler başlatırken eklenir).
+const ITEM_FLAGS = ['pl', 'mp3', 'hq1080'];
 
 const U = () => globalThis.VD_UTILS;
 const P = () => globalThis.VD_PROTOCOL;
@@ -24,6 +43,8 @@ let loadPromise = null;
 let emitTimer = null;
 let saveTimer = null;
 let pumping = false;
+let updateInfo = { checkedAt: 0, ok: null, changed: false, version: '', message: '' };
+let updating = false;
 const subscribers = new Set();
 
 // ---------- kalıcılık ----------
@@ -32,7 +53,10 @@ async function load() {
   if (loadPromise) return loadPromise;
   loadPromise = (async () => {
     try {
-      const stored = await chrome.storage.local.get([STORAGE_QUEUE, STORAGE_SETTINGS]);
+      const stored = await chrome.storage.local.get([STORAGE_QUEUE, STORAGE_SETTINGS, STORAGE_UPDATE]);
+      if (stored[STORAGE_UPDATE] && typeof stored[STORAGE_UPDATE] === 'object') {
+        updateInfo = { ...updateInfo, ...stored[STORAGE_UPDATE] };
+      }
       if (Array.isArray(stored[STORAGE_QUEUE])) {
         items = stored[STORAGE_QUEUE].filter((i) => i && i.url);
       }
@@ -69,6 +93,8 @@ async function resyncActive() {
       item.speed = 0;
       item.error = null;
     }
+    // Güncelleme beklerken worker kapandıysa beklemeyi bırak.
+    if (item.hold) item.hold = false;
   }
 
   // Sayfa içi (frontend) indirmeleri 2 dakikadan uzun süredir ilerleme bildirmediyse
@@ -124,7 +150,8 @@ function publicItem(item) {
 function snapshot() {
   return {
     queue: items.map(publicItem),
-    settings: { ...settings }
+    settings: { ...settings },
+    update: { ...updateInfo, running: updating }
   };
 }
 
@@ -188,7 +215,8 @@ async function pump() {
     ).length;
     let slots = Math.max(1, Number(settings.concurrency) || 3) - activeCount;
     if (slots <= 0) return;
-    const queued = items.filter((i) => i.state === 'queued');
+    // yt-dlp güncellenirken exe kilitli olur: yardımcı öğeleri bekletilir.
+    const queued = items.filter((i) => i.state === 'queued' && !i.hold && !(updating && i.via === 'helper'));
     for (const item of queued) {
       if (slots <= 0) break;
       slots--;
@@ -282,6 +310,7 @@ async function startHelperItem(item) {
   item.lastProgressAt = Date.now();
   item.error = null;
   item.dir = settings.helperDir || '';
+  item.encPct = null;
   save();
   emitSoon();
   try {
@@ -291,7 +320,8 @@ async function startHelperItem(item) {
       url: item.url,
       name: item.filename || 'video',
       dir: settings.helperDir || '',
-      cookies: settings.helperCookies || ''
+      cookies: settings.helperCookies || '',
+      flags: itemFlags(item)
     });
   } catch (err) {
     if (item.state === 'canceled') {
@@ -318,6 +348,75 @@ function helperItemById(id) {
   return items.find((i) => i.id === id);
 }
 
+// Öğenin kendi bayrakları (liste/MP3) + Ayarlar'daki gömme seçenekleri.
+function itemFlags(item) {
+  const flags = Array.isArray(item.flags) ? item.flags.filter((f) => ITEM_FLAGS.includes(f)) : [];
+  if (settings.embedSubs && !flags.includes('mp3')) flags.push('subs');
+  if (settings.embedThumb) flags.push('thumb');
+  if (settings.embedMeta) flags.push('meta');
+  return flags;
+}
+
+// ---------- yt-dlp güncelleme ----------
+
+async function saveUpdateInfo() {
+  try {
+    await chrome.storage.local.set({ [STORAGE_UPDATE]: updateInfo });
+  } catch {
+    // yoksay
+  }
+}
+
+// yt-dlp'yi günceller. Yardımcı indirmesi sürüyorsa yardımcı reddeder; o zaman
+// indirmeler bitene kadar (en fazla ~10 dk) aralıklarla yeniden denenir.
+async function runUpdate(reason) {
+  if (updating) return null;
+  updating = true;
+  emitNow();
+  let result = null;
+  try {
+    for (let attempt = 0; attempt < 40; attempt++) {
+      if (helperActiveCount() === 0) {
+        result = await helperUpdateYtdlp();
+        if (result.ok || !/İndirme sürüyor/.test(result.message || '')) break;
+      }
+      await new Promise((r) => setTimeout(r, 15000));
+    }
+  } finally {
+    updating = false;
+  }
+  if (!result) result = { ok: false, changed: false, version: '', message: 'İndirmeler bitmediği için güncelleme ertelendi' };
+  updateInfo = {
+    checkedAt: Date.now(),
+    ok: result.ok,
+    changed: result.changed,
+    version: result.version || updateInfo.version,
+    message: result.message || '',
+    reason
+  };
+  await saveUpdateInfo();
+  emitNow();
+  return result;
+}
+
+// Haftalık kontrol: service worker her uyandığında çağrılır, gerekirse çalışır.
+async function maybeScheduledUpdate() {
+  if (!settings.autoUpdate || updating) return;
+  if (Date.now() - (updateInfo.checkedAt || 0) < UPDATE_EVERY_MS) return;
+  const st = await helperGetStatus();
+  if (!st || !st.ok || st.helperV < 2) return;
+  await runUpdate('haftalik');
+  pump();
+}
+
+// Elle güncelleme (Ayarlar → Şimdi güncelle).
+export async function updateYtdlpNow() {
+  await load();
+  const result = await runUpdate('elle');
+  pump();
+  return result || { ok: false, changed: false, version: '', message: 'Güncelleme zaten sürüyor' };
+}
+
 function helperProgress(event) {
   const item = helperItemById(event.id);
   if (!item || item.via !== 'helper') return;
@@ -325,7 +424,21 @@ function helperProgress(event) {
   item.state = 'downloading';
   item.bytesReceived = Math.max(0, event.d || 0);
   if (event.t > 0) item.totalBytes = event.t;
+  if (event.n > 0) {
+    item.plIndex = event.i || 0;
+    item.plCount = event.n;
+  }
   if (event.s > 0) item.speed = event.s;
+  item.lastProgressAt = Date.now();
+  save();
+  emitSoon();
+}
+
+function helperEncoding(event) {
+  const item = helperItemById(event.id);
+  if (!item || item.via !== 'helper' || item.state !== 'downloading') return;
+  item.encPct = Math.max(0, Math.min(100, event.pct || 0));
+  item.speed = 0;
   item.lastProgressAt = Date.now();
   save();
   emitSoon();
@@ -338,18 +451,24 @@ function helperFinished(event) {
     pump();
     return;
   }
+  item.encPct = null;
   item.state = 'complete';
   item.finishedAt = Date.now();
   item.speed = 0;
   if (event.file) item.filePath = event.file;
+  if (event.files > 0) item.files = event.files;
+  item.warning = event.warning ? String(event.warning).slice(0, 300) : null;
   if (event.bytes > 0) {
     item.bytesReceived = event.bytes;
-    if (!item.totalBytes) item.totalBytes = event.bytes;
+    if (!item.totalBytes || item.flags?.includes('pl')) item.totalBytes = event.bytes;
   }
   save();
   emitNow();
   pump();
 }
+
+// Bu hatalar yt-dlp sürümüyle ilgili değildir; güncelleme denenmez.
+const NO_UPDATE_ERRORS = /YARDIMCI_|YT_DLP_YOK|ffmpeg|Private video|Video unavailable|members-only|removed by the uploader|copyright/i;
 
 function helperFailed(event) {
   const item = helperItemById(event.id);
@@ -358,10 +477,55 @@ function helperFailed(event) {
     pump();
     return;
   }
-  item.state = 'error';
-  item.error = String(event.error || 'YARDIMCI_HATASI').slice(0, 400);
-  item.finishedAt = Date.now();
+  const error = String(event.error || 'YARDIMCI_HATASI').slice(0, 400);
   item.speed = 0;
+
+  // Yardımcı o an yt-dlp'yi güncelliyordu: kısa süre sonra yeniden kuyruğa al.
+  if (error === 'YT_DLP_GUNCELLENIYOR') {
+    item.state = 'queued';
+    item.hold = true;
+    setTimeout(() => {
+      item.hold = false;
+      pump();
+    }, 10000);
+    save();
+    emitNow();
+    return;
+  }
+
+  // YouTube/TikTok değişince eski yt-dlp kırılır: bir kez güncelleyip yeniden dene.
+  const canUpdate =
+    settings.autoUpdate &&
+    !item.updRetried &&
+    !NO_UPDATE_ERRORS.test(error) &&
+    Date.now() - (updateInfo.checkedAt || 0) > UPDATE_ON_ERROR_MIN_MS;
+  if (canUpdate) {
+    item.updRetried = true;
+    item.state = 'queued';
+    item.hold = true;
+    item.error = null;
+    item.note = 'yt-dlp güncelleniyor…';
+    save();
+    emitNow();
+    runUpdate('hata').then((result) => {
+      item.hold = false;
+      item.note = null;
+      if (!result || !result.changed) {
+        // Güncel sürümde de aynı hata: yeniden denemenin anlamı yok.
+        item.state = 'error';
+        item.error = error;
+        item.finishedAt = Date.now();
+      }
+      save();
+      emitNow();
+      pump();
+    });
+    return;
+  }
+
+  item.state = 'error';
+  item.error = error;
+  item.finishedAt = Date.now();
   save();
   emitNow();
   pump();
@@ -371,6 +535,7 @@ async function handleHelperEvent(event) {
   if (!event || !event.id) return;
   await load();
   if (event.ev === 'p') helperProgress(event);
+  else if (event.ev === 'enc') helperEncoding(event);
   else if (event.ev === 'done') helperFinished(event);
   else if (event.ev === 'err') helperFailed(event);
 }
@@ -519,6 +684,10 @@ export async function initQueue() {
   attachDownloadListeners();
   pump();
   emitNow();
+  // Açılışı yavaşlatmamak için haftalık yt-dlp kontrolü biraz sonra yapılır.
+  setTimeout(() => {
+    maybeScheduledUpdate().catch(() => {});
+  }, 20000);
 }
 
 // ---------- genel API ----------
@@ -540,6 +709,7 @@ export async function enqueue(input) {
     size: Number.isFinite(input.size) ? input.size : null,
     via: input.via === 'frontend' ? 'frontend' : input.via === 'helper' ? 'helper' : 'native',
     selector: input.via === 'helper' ? String(input.selector || 'bv*+ba/b').slice(0, 300) : null,
+    flags: input.via === 'helper' && Array.isArray(input.flags) ? input.flags.filter((f) => ITEM_FLAGS.includes(f)) : [],
     filePath: null,
     dir: null,
     tabId: Number.isInteger(input.tabId) ? input.tabId : null,
@@ -584,7 +754,9 @@ export async function setSettings(patch) {
     if (Number.isFinite(patch.concurrency)) {
       settings.concurrency = Math.min(5, Math.max(1, Math.round(patch.concurrency)));
     }
-    if (typeof patch.autoRetry === 'boolean') settings.autoRetry = patch.autoRetry;
+    for (const key of ['autoRetry', 'autoUpdate', 'embedSubs', 'embedThumb', 'embedMeta']) {
+      if (typeof patch[key] === 'boolean') settings[key] = patch[key];
+    }
     if (typeof patch.helperDir === 'string') settings.helperDir = patch.helperDir.trim().slice(0, 300);
     if (typeof patch.helperCookies === 'string') {
       const allowed = ['', 'brave', 'chrome', 'chromium', 'edge', 'opera', 'firefox', 'vivaldi'];
@@ -693,8 +865,11 @@ export async function retryItem(id) {
   if (item.state === 'complete' || item.state === 'downloading' || item.state === 'starting') return;
   item.state = 'queued';
   item.error = null;
+  item.warning = null;
+  item.encPct = null;
   item.paused = false;
   item.retries = 0;
+  item.updRetried = false;
   item.bytesReceived = 0;
   item.speed = 0;
   item.downloadId = null;
