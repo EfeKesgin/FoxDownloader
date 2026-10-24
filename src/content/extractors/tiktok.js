@@ -189,6 +189,8 @@ globalThis.VD.extractors.tiktok = (() => {
 
   function helperFormats(status, watchUrl) {
     if (!status || !status.ok || !status.ytdlp) return [];
+    // MP3'e dönüştürme FFmpeg ister; yoksa ses olduğu gibi (M4A/MP4) iner.
+    const mp3 = !!status.ffmpeg;
     return [
       {
         id: 'tt-helper-video',
@@ -206,13 +208,14 @@ globalThis.VD.extractors.tiktok = (() => {
       {
         id: 'tt-helper-audio',
         kind: 'helper-audio',
-        label: 'Ses (Yardımcı • MP3)',
-        tag: 'ses',
-        ext: 'mp3',
+        label: mp3 ? 'Ses (Yardımcı • MP3)' : 'Ses (Yardımcı)',
+        tag: mp3 ? 'mp3' : 'ses',
+        ext: mp3 ? 'mp3' : 'm4a',
         height: 0,
         url: watchUrl,
         via: 'helper',
-        selector: 'audio',
+        selector: 'ba/b',
+        flags: mp3 ? ['mp3'] : [],
         disabled: false,
         note: null
       }
@@ -249,6 +252,8 @@ globalThis.VD.extractors.tiktok = (() => {
       info.title = (item.desc || '').trim() || 'TikTok video';
       info.author = (item.author && item.author.uniqueId) || ctx.author || '';
       info.duration = Number(video.duration) || 0;
+      const cover = video.cover || video.originCover || '';
+      if (typeof cover === 'string' && U.isHttpUrl(cover)) info.thumb = cover;
 
       const seen = new Set();
       const push = (f) => {

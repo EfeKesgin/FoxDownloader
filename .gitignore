@@ -6,3 +6,9 @@ node_modules/
 
 # Geçici / log dosyaları
 *.log
+
+# Eklenti özel anahtarı (make-extension-key.mjs) — asla depoya girmez
+devtools/extension-key.private.json
+
+# Dağıtım EXE'leri GitHub Releases'a yüklenir, depoda tutulmaz
+dist/

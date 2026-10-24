@@ -35,6 +35,8 @@ globalThis.VD_PROTOCOL = Object.freeze({
   // YouTube yardımcısı (native messaging) durumu
   HELPER_STATUS: 'vd:helper-status',
   HELPER_VERSION: 'vd:helper-version',
+  // yt-dlp'yi şimdi güncelle (yt-dlp -U)
+  YTDLP_UPDATE: 'vd:ytdlp-update',
   // tamamlanan indirmeyi klasörde göster
   REVEAL_ITEM: 'vd:reveal-item',
   // klasör seçme penceresi (yardımcı açısından)

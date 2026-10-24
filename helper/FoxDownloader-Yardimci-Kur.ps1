@@ -4,8 +4,11 @@
 # Bu betik (FoxDownloader-Yardimci-Kur.cmd ile birlikte calistirilir):
 #   1) ythelper.exe  : yerel C# derleyicisiyle derlenir (native messaging host)
 #   2) yt-dlp.exe    : GitHub'dan indirilir (~18 MB)
-#   3) FFmpeg        : istege bagli indirilir (1080p+ icin birlestirme)
-#   4) Native messaging manifestosu + kayit defteri anahtarlari yazilir
+#   3) Deno          : YouTube imza cozumu icin JS calisma ortami (~43 MB)
+#   4) FFmpeg        : istege bagli indirilir (goruntu+ses birlestirme, ~90 MB)
+#   5) Native messaging manifestosu + kayit defteri anahtarlari yazilir
+#
+# Indirilen her dosya, yayinlandigi projenin SHA-256 ozetiyle dogrulanir.
 #
 # Kaldirma: FoxDownloader-Yardimci-Kaldir.cmd
 # Sessiz:   FoxDownloader-Yardimci-Kur.cmd -Sessiz
@@ -91,6 +94,41 @@ function Get-File($url, $out) {
     Move-Item -Force $part $out
 }
 
+function Get-Text($url) {
+    Add-Type -AssemblyName System.Net.Http | Out-Null
+    $client = New-Object System.Net.Http.HttpClient
+    $client.Timeout = [TimeSpan]::FromMinutes(2)
+    try {
+        return $client.GetStringAsync($url).GetAwaiter().GetResult()
+    } finally {
+        $client.Dispose()
+    }
+}
+
+# Yayinlanan ozet dosyasindan beklenen SHA-256 degerini okur. Iki bicim desteklenir:
+# "<ozet>  <dosya>" satirlari (yt-dlp, FFmpeg-Builds) ve tek ozet iceren dosya (Deno).
+function Get-ExpectedHash($sumsUrl, $fileName) {
+    $text = Get-Text $sumsUrl
+    foreach ($row in ($text -split "`r?`n")) {
+        if ($row -match '^\s*([0-9a-fA-F]{64})\s+\*?(\S+)\s*$' -and $Matches[2] -eq $fileName) {
+            return $Matches[1].ToLowerInvariant()
+        }
+    }
+    $all = [regex]::Matches($text, '\b[0-9a-fA-F]{64}\b')
+    if ($all.Count -eq 1) { return $all[0].Value.ToLowerInvariant() }
+    throw ('Ozet dosyasinda bulunamadi: ' + $fileName)
+}
+
+# Dosyanin SHA-256 ozetini dogrular; uyusmazsa dosyayi silip hata verir.
+function Assert-Hash($path, $expected, $label) {
+    $actual = (Get-FileHash -Algorithm SHA256 -Path $path).Hash.ToLowerInvariant()
+    if ($actual -ne $expected) {
+        Remove-Item -Force $path -ErrorAction SilentlyContinue
+        throw ($label + ' SHA-256 dogrulamasi basarisiz (dosya bozuk ya da degistirilmis)')
+    }
+    Good ($label + ' SHA-256 dogrulandi')
+}
+
 Line ''
 Line '========================================================' 'DarkCyan'
 Line '  FoxDownloader  -  Yardimci Kurulumu' 'DarkCyan'
@@ -107,7 +145,7 @@ try {
 }
 
 # ---------------------------------------------------------------------------
-Step '1/6  ythelper.exe derleniyor (yerel C# derleyicisi)'
+Step '1/7  ythelper.exe derleniyor (yerel C# derleyicisi)'
 # ---------------------------------------------------------------------------
 $csPath  = Join-Path $helperDir 'ythelper.cs'
 $exePath = Join-Path $helperDir 'ythelper.exe'
@@ -124,21 +162,34 @@ $csSource = @'
 //
 //   hello|id                                → sürüm/durum bilgisi
 //   ver|id                                  → yt-dlp sürümünü canlı sorgula
-//   dl|id|<seçici>|<url>|<ad>|<dizin>|<çerez> → indirme başlat (base64 alanlar)
+//   dl|id|<seçici>|<url>|<ad>|<dizin>|<çerez>|<bayraklar> → indirme başlat (base64 alanlar)
+//   upd|id                                  → yt-dlp'yi güncelle (yt-dlp -U)
 //   cancel|id                               → indirmeyi iptal et
 //   reveal|id|<yol>                         → klasörde göster
 //   pickdir|id|<başlangıç dizini>           → klasör seçme penceresi aç (base64)
 //   quit                                    → çık
 //
 // Not: <dizin> boş gelirse dosya kullanıcının İndirilenler klasörüne iner;
-// yardımcı kendiliğinden alt klasör OLUŞTURMAZ.
+// yardımcı kendiliğinden alt klasör OLUŞTURMAZ (tek istisna: oynatma listeleri
+// liste adıyla açılan bir klasöre iner).
+//
+// <bayraklar> virgülle ayrılmış isteğe bağlı seçeneklerdir (bilinmeyenler yok sayılır):
+//   pl    → oynatma listesinin tamamını indir
+//   mp3   → sesi MP3'e dönüştür
+//   subs  → altyazıları (TR/EN) videoya göm
+//   thumb → kapak resmini dosyaya göm
+//   meta  → başlık/kanal/tarih bilgisini dosyaya yaz
+//   hq1080 → en iyi kaynağı (4K/1440p) indirip FFmpeg ile 1080p H.264 MP4'e küçült
+//            (YouTube'un kendi 1080p akışı ~2.5 Mbps'ye sıkıştırılmış olduğu için)
 //
 // Gönderilen olaylar (JSON nesnesi):
-//   {"ev":"hello","id":...,"v":1,"ytdlp":1,"ffmpeg":1,"dir":"<b64>","ytdlpV":"<b64>"}
+//   {"ev":"hello","id":...,"v":2,"ytdlp":1,"ffmpeg":1,"deno":1,"dir":"<b64>","ytdlpV":"<b64>"}
 //   {"ev":"ver","id":...,"v":"<b64>"}
 //   {"ev":"start","id":...} | {"ev":"err","id":...,"m":"<b64>","code":N}
-//   {"ev":"p","id":...,"d":N,"t":N,"s":N,"e":N}
-//   {"ev":"done","id":...,"f":"<b64>","bytes":N}
+//   {"ev":"p","id":...,"d":N,"t":N,"s":N,"e":N,"i":N,"n":N}   (i/n: liste sırası/toplamı)
+//   {"ev":"done","id":...,"f":"<b64>","bytes":N,"files":N,"w":"<b64>"}
+//   {"ev":"upd","id":...,"ok":1,"changed":1,"v":"<b64>","m":"<b64>"}
+//   {"ev":"enc","id":...,"pct":N}                               (hq1080 dönüştürme ilerlemesi)
 //   {"ev":"canceled","id":...}
 //   {"ev":"reveal","id":...,"ok":1}
 //
@@ -152,6 +203,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 
 static class Program
@@ -160,6 +212,7 @@ static class Program
     const string FILE_MARK = "@@@FILE:";
     const int MAX_FRAME = 8 * 1024 * 1024;
     const int MIN_PROGRESS_MS = 250;
+    const int HELPER_VERSION = 2;
 
     static Stream stdin;
     static Stream stdout;
@@ -177,6 +230,7 @@ static class Program
         public string Name;
         public string Dir;
         public string Cookies;
+        public HashSet<string> Flags;
         public Process Proc;
         public int Pid;
         public long LastSentMs;
@@ -184,6 +238,9 @@ static class Program
         public long LastSpeed;
         public long LastEta;
         public long LastTotal;
+        public long LastIndex;
+        public long LastCount;
+        public int FilesDone;
         public string LastError;
         public string FinalPath;
         public volatile bool Canceled;
@@ -326,6 +383,7 @@ static class Program
             if (cmd == "hello") CmdHello(parts);
             else if (cmd == "ver") CmdVersion(parts);
             else if (cmd == "dl") CmdDownload(parts);
+            else if (cmd == "upd") CmdUpdate(parts);
             else if (cmd == "cancel") CmdCancel(parts);
             else if (cmd == "reveal") CmdReveal(parts);
             else if (cmd == "pickdir") CmdPickDir(parts);
@@ -361,8 +419,10 @@ static class Program
             catch { }
         }
         Send("{\"ev\":\"hello\",\"id\":" + Jid(id) +
-             ",\"v\":1,\"ytdlp\":" + (hasYtdlp ? "1" : "0") +
+             ",\"v\":" + HELPER_VERSION.ToString(CultureInfo.InvariantCulture) +
+             ",\"ytdlp\":" + (hasYtdlp ? "1" : "0") +
              ",\"ffmpeg\":" + (FindFfmpeg() != null ? "1" : "0") +
+             ",\"deno\":" + (FindDeno() != null ? "1" : "0") +
              ",\"dir\":" + Js(DefaultDir()) +
              ",\"exe\":" + Js(exeDir) +
              ",\"ytdlpV\":" + Js(version) + "}");
@@ -373,36 +433,155 @@ static class Program
         string id = Arg(parts, 1);
         ThreadPool.QueueUserWorkItem(delegate(object state)
         {
+            string version = QueryVersion();
+            Send("{\"ev\":\"ver\",\"id\":" + Jid(id) + ",\"v\":" + Js(version) + "}");
+        });
+    }
+
+    // yt-dlp --version çalıştırır ve sonucu version.txt'ye yazar.
+    static string QueryVersion()
+    {
+        string version = "";
+        try
+        {
+            string exe = Path.Combine(exeDir, "yt-dlp.exe");
+            if (File.Exists(exe))
+            {
+                string output;
+                RunCapture(exe, "--version", 180000, out output);
+                version = LastMeaningfulLine(output);
+                if (version.Length > 0)
+                {
+                    try { File.WriteAllText(Path.Combine(exeDir, "version.txt"), version); } catch { }
+                }
+            }
+        }
+        catch { }
+        return version;
+    }
+
+    // Süreci çalıştırır, stdout+stderr çıktısını toplar ve çıkış kodunu döner.
+    static int RunCapture(string exe, string arguments, int timeoutMs, out string output)
+    {
+        ProcessStartInfo psi = new ProcessStartInfo(exe, arguments);
+        psi.UseShellExecute = false;
+        psi.CreateNoWindow = true;
+        psi.RedirectStandardOutput = true;
+        psi.RedirectStandardError = true;
+        // stdin yönlendirilmezse alt süreç native messaging borusunu miras alır
+        // (yt-dlp -U bu durumda hiç bitmiyor).
+        psi.RedirectStandardInput = true;
+        psi.WorkingDirectory = exeDir;
+        StringBuilder sb = new StringBuilder();
+        ManualResetEvent outDone = new ManualResetEvent(false);
+        ManualResetEvent errDone = new ManualResetEvent(false);
+        using (Process p = new Process())
+        {
+            p.StartInfo = psi;
+            p.OutputDataReceived += delegate(object s, DataReceivedEventArgs e)
+            {
+                if (e.Data == null) outDone.Set();
+                else lock (sb) sb.AppendLine(e.Data);
+            };
+            p.ErrorDataReceived += delegate(object s, DataReceivedEventArgs e)
+            {
+                if (e.Data == null) errDone.Set();
+                else lock (sb) sb.AppendLine(e.Data);
+            };
+            p.Start();
+            try { p.StandardInput.Close(); } catch { }
+            p.BeginOutputReadLine();
+            p.BeginErrorReadLine();
+            int code = -1;
+            if (p.WaitForExit(timeoutMs))
+            {
+                // Parametresiz WaitForExit() kullanılmaz: "yt-dlp -U" dosyayı değiştirmek
+                // için bir cmd süreci bırakır, o da boruları açık tuttuğundan sonsuza dek
+                // beklenirdi. Tamponların boşalması için kısa ve sınırlı beklenir.
+                outDone.WaitOne(3000);
+                errDone.WaitOne(3000);
+                code = p.ExitCode;
+            }
+            else
+            {
+                try { KillTree(p.Id); } catch { }
+            }
+            lock (sb) output = sb.ToString();
+            return code;
+        }
+    }
+
+    // yt-dlp kendini günceller (yt-dlp -U; yeni dosyayı yt-dlp kendisi SHA2-256SUMS
+    // ile doğrular). İndirme sürerken exe kilitli olduğu için istek reddedilir.
+    static int updating;
+
+    static void CmdUpdate(string[] parts)
+    {
+        string id = Arg(parts, 1);
+        int busy;
+        lock (mapLock) busy = active.Count;
+        if (busy > 0)
+        {
+            SendUpdate(id, false, false, "", "İndirme sürüyor; güncelleme sonra yapılacak");
+            return;
+        }
+        if (Interlocked.Exchange(ref updating, 1) == 1)
+        {
+            SendUpdate(id, false, false, "", "Güncelleme zaten sürüyor");
+            return;
+        }
+        ThreadPool.QueueUserWorkItem(delegate(object state)
+        {
+            bool ok = false;
+            bool changed = false;
+            string msg = "";
             string version = "";
             try
             {
                 string exe = Path.Combine(exeDir, "yt-dlp.exe");
-                if (File.Exists(exe))
+                if (!File.Exists(exe))
                 {
-                    ProcessStartInfo psi = new ProcessStartInfo(exe, "--version");
-                    psi.UseShellExecute = false;
-                    psi.CreateNoWindow = true;
-                    psi.RedirectStandardOutput = true;
-                    psi.RedirectStandardError = true;
-                    using (Process p = Process.Start(psi))
-                    {
-                        string stdoutText = p.StandardOutput.ReadToEnd();
-                        p.StandardError.ReadToEnd();
-                        if (!p.WaitForExit(20000))
-                        {
-                            try { p.Kill(); } catch { }
-                        }
-                        version = (stdoutText ?? "").Trim();
-                    }
-                    if (version.Length > 0)
-                    {
-                        try { File.WriteAllText(Path.Combine(exeDir, "version.txt"), version); } catch { }
-                    }
+                    msg = "yt-dlp.exe bulunamadı";
+                }
+                else
+                {
+                    string before = QueryVersion();
+                    string output;
+                    int code = RunCapture(exe, "-U", 300000, out output);
+                    version = QueryVersion();
+                    ok = code == 0;
+                    changed = version.Length > 0 && version != before;
+                    msg = LastMeaningfulLine(output);
                 }
             }
-            catch { }
-            Send("{\"ev\":\"ver\",\"id\":" + Jid(id) + ",\"v\":" + Js(version) + "}");
+            catch (Exception ex)
+            {
+                msg = ex.Message;
+            }
+            finally
+            {
+                Interlocked.Exchange(ref updating, 0);
+            }
+            SendUpdate(id, ok, changed, version, msg);
         });
+    }
+
+    static void SendUpdate(string id, bool ok, bool changed, string version, string msg)
+    {
+        Send("{\"ev\":\"upd\",\"id\":" + Jid(id) + ",\"ok\":" + (ok ? "1" : "0") +
+             ",\"changed\":" + (changed ? "1" : "0") + ",\"v\":" + Js(version) + ",\"m\":" + Js(msg) + "}");
+    }
+
+    static string LastMeaningfulLine(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        string[] lines = text.Replace("\r", "").Split('\n');
+        for (int i = lines.Length - 1; i >= 0; i--)
+        {
+            string l = lines[i].Trim();
+            if (l.Length > 0) return l.Length > 300 ? l.Substring(0, 300) : l;
+        }
+        return "";
     }
 
     static void CmdDownload(string[] parts)
@@ -413,6 +592,7 @@ static class Program
         string name = SanitizeName(UnB64(Arg(parts, 4)));
         string dir = UnB64(Arg(parts, 5));
         string cookies = UnB64(Arg(parts, 6));
+        HashSet<string> flags = ParseFlags(UnB64(Arg(parts, 7)));
 
         if (id.Length == 0 || url.Length == 0)
         {
@@ -432,6 +612,11 @@ static class Program
             Send("{\"ev\":\"err\",\"id\":" + Jid(id) + ",\"m\":" + Js("yt-dlp.exe bulunamadı") + ",\"code\":-2}");
             return;
         }
+        if (Volatile.Read(ref updating) == 1)
+        {
+            Send("{\"ev\":\"err\",\"id\":" + Jid(id) + ",\"m\":" + Js("YT_DLP_GUNCELLENIYOR") + ",\"code\":-4}");
+            return;
+        }
         // Klasör boşsa İndirilenler kullanılır (alt klasör oluşturulmaz);
         // yalnızca kullanıcının açıkça yazdığı klasör yoksa oluşturulur.
         bool customDir = dir.Length > 0;
@@ -449,6 +634,9 @@ static class Program
         rec.Name = name;
         rec.Dir = dir;
         rec.Cookies = cookies;
+        rec.Flags = flags;
+        bool playlist = flags.Contains("pl");
+        string ffmpeg = FindFfmpeg();
 
         List<string> args = new List<string>();
         args.Add("--newline");
@@ -456,12 +644,12 @@ static class Program
         args.Add("--no-quiet");
         args.Add("--no-warnings");
         args.Add("--no-simulate");
-        args.Add("--no-playlist");
+        args.Add(playlist ? "--yes-playlist" : "--no-playlist");
         args.Add("--no-mtime");
         args.Add("--socket-timeout");
         args.Add("20");
         args.Add("--progress-template");
-        args.Add(PROGRESS_MARK + "%(progress.downloaded_bytes)s;%(progress.total_bytes)s;%(progress.total_bytes_estimate)s;%(progress.speed)s;%(progress.eta)s");
+        args.Add(PROGRESS_MARK + "%(progress.downloaded_bytes)s;%(progress.total_bytes)s;%(progress.total_bytes_estimate)s;%(progress.speed)s;%(progress.eta)s;%(info.playlist_index)s;%(info.n_entries)s");
         args.Add("--print");
         args.Add("after_move:" + FILE_MARK + "%(filepath)s");
         args.Add("-f");
@@ -469,9 +657,36 @@ static class Program
         args.Add("-P");
         args.Add(rec.Dir);
         args.Add("-o");
-        args.Add(rec.Name + ".%(ext)s");
-        string ffmpeg = FindFfmpeg();
+        // Ad, yt-dlp çıktı şablonuna girer: başlıktaki '%' kaçışlanır, yoksa
+        // "%(id)s" gibi bir metin şablon alanı sanılıp genişletilir.
+        string safeName = rec.Name.Replace("%", "%%");
+        // hq1080: önce en iyi kaynak ".kaynak" ekiyle iner, sonra 1080p MP4'e dönüştürülür.
+        string single = flags.Contains("hq1080") ? safeName + ".kaynak.%(ext)s" : safeName + ".%(ext)s";
+        args.Add(playlist ? safeName + "\\%(playlist_index)03d - %(title)s.%(ext)s" : single);
         if (ffmpeg != null) args.Add("--ffmpeg-location=" + ffmpeg);
+        string deno = FindDeno();
+        if (deno != null)
+        {
+            args.Add("--js-runtimes");
+            args.Add("deno:" + deno);
+        }
+        if (flags.Contains("mp3") && ffmpeg != null)
+        {
+            args.Add("-x");
+            args.Add("--audio-format");
+            args.Add("mp3");
+            args.Add("--audio-quality");
+            args.Add("0");
+        }
+        if (flags.Contains("subs"))
+        {
+            // FFmpeg varsa altyazı dosyaya gömülür ve .vtt silinir; yoksa yanına yazılır.
+            args.Add(ffmpeg != null ? "--embed-subs" : "--write-subs");
+            args.Add("--sub-langs");
+            args.Add("tr.*,en.*,-live_chat");
+        }
+        if (flags.Contains("thumb") && ffmpeg != null) args.Add("--embed-thumbnail");
+        if (flags.Contains("meta") && ffmpeg != null) args.Add("--embed-metadata");
         if (rec.Cookies.Length > 0)
         {
             args.Add("--cookies-from-browser");
@@ -550,6 +765,25 @@ static class Program
             bytes = GetFileSize(rec.FinalPath);
         }
         catch { }
+
+        // Yüksek kalite 1080p: indirilen 4K/1440p kaynak küçültülür. Kayıt bu sırada
+        // "active" içinde kalır ki iptal komutu kodlayıcıyı da durdurabilsin.
+        string encodeWarning = "";
+        if (exitCode == 0 && !rec.Canceled && rec.Flags.Contains("hq1080"))
+        {
+            string src = string.IsNullOrEmpty(rec.FinalPath) ? GuessOutput(rec) : rec.FinalPath;
+            string encoded = Transcode1080(rec, src);
+            if (encoded != null)
+            {
+                rec.FinalPath = encoded;
+                bytes = GetFileSize(encoded);
+            }
+            else if (!rec.Canceled)
+            {
+                encodeWarning = "1080p'ye dönüştürülemedi; dosya orijinal çözünürlükte bırakıldı";
+            }
+        }
+
         lock (mapLock)
         {
             active.Remove(rec.Id);
@@ -559,13 +793,19 @@ static class Program
             Send("{\"ev\":\"canceled\",\"id\":" + Jid(rec.Id) + "}");
             return;
         }
-        if (exitCode == 0)
+        // Oynatma listesinde tek videonun hatası (silinmiş/özel video) tüm işi
+        // başarısız saymaz: en az bir dosya indiyse uyarıyla "bitti" bildirilir.
+        bool partial = exitCode != 0 && rec.Flags.Contains("pl") && rec.FilesDone > 0;
+        if (exitCode == 0 || partial)
         {
             string final = rec.FinalPath;
             if (string.IsNullOrEmpty(final)) final = GuessOutput(rec);
             if (bytes == 0) bytes = GetFileSize(final);
             if (bytes == 0) bytes = rec.LastBytes;
-            Send("{\"ev\":\"done\",\"id\":" + Jid(rec.Id) + ",\"f\":" + Js(final ?? "") + ",\"bytes\":" + bytes.ToString(CultureInfo.InvariantCulture) + "}");
+            Send("{\"ev\":\"done\",\"id\":" + Jid(rec.Id) + ",\"f\":" + Js(final ?? "") +
+                 ",\"bytes\":" + bytes.ToString(CultureInfo.InvariantCulture) +
+                 ",\"files\":" + rec.FilesDone.ToString(CultureInfo.InvariantCulture) +
+                 ",\"w\":" + Js(partial ? (rec.LastError ?? "") : encodeWarning) + "}");
         }
         else
         {
@@ -582,6 +822,7 @@ static class Program
         if (s.StartsWith(FILE_MARK, StringComparison.Ordinal))
         {
             rec.FinalPath = s.Substring(FILE_MARK.Length).Trim();
+            rec.FilesDone++;
             return;
         }
         if (s.StartsWith(PROGRESS_MARK, StringComparison.Ordinal))
@@ -592,6 +833,10 @@ static class Program
             long te = ParseNum(f, 2);
             long sp = ParseNum(f, 3);
             long eta = ParseNum(f, 4);
+            long idx = ParseNum(f, 5);
+            long cnt = ParseNum(f, 6);
+            if (idx > 0) rec.LastIndex = idx;
+            if (cnt > 0) rec.LastCount = cnt;
             if (t <= 0) t = te;
             if (d >= 0) rec.LastBytes = d;
             if (t > 0) rec.LastTotal = t;
@@ -604,7 +849,9 @@ static class Program
                 Send("{\"ev\":\"p\",\"id\":" + Jid(rec.Id) + ",\"d\":" + Math.Max(0, d).ToString(CultureInfo.InvariantCulture) +
                      ",\"t\":" + (t > 0 ? t : -1).ToString(CultureInfo.InvariantCulture) +
                      ",\"s\":" + Math.Max(0, sp).ToString(CultureInfo.InvariantCulture) +
-                     ",\"e\":" + Math.Max(0, eta).ToString(CultureInfo.InvariantCulture) + "}");
+                     ",\"e\":" + Math.Max(0, eta).ToString(CultureInfo.InvariantCulture) +
+                     ",\"i\":" + rec.LastIndex.ToString(CultureInfo.InvariantCulture) +
+                     ",\"n\":" + rec.LastCount.ToString(CultureInfo.InvariantCulture) + "}");
             }
             return;
         }
@@ -773,9 +1020,176 @@ static class Program
         return null;
     }
 
+    // ---------- yüksek kalite 1080p dönüştürme ----------
+
+    // Sırayla denenen H.264 kodlayıcıları: önce ekran kartı (hızlı), en son işlemci.
+    // FFmpeg derlemesi hepsini listeler ama donanım yoksa kodlayıcı hemen hata verir.
+    static readonly string[] Encoders = new string[]
+    {
+        "-c:v h264_nvenc -preset p6 -tune hq -rc vbr -cq 21 -b:v 0 -profile:v high",
+        "-c:v h264_qsv -preset slower -global_quality 22",
+        "-c:v h264_amf -quality quality -rc cqp -qp_i 20 -qp_p 22 -qp_b 24",
+        "-c:v libx264 -preset fast -crf 20"
+    };
+
+    // Kaynağı 1920x1080 (dikey videoda 1080x1920) kutusuna sığacak şekilde küçültür.
+    // Dönüş: yeni dosya yolu; kaynak zaten küçükse yeniden adlandırılmış kaynak;
+    // başarısızlık/iptalde null (kaynak dosya yerinde kalır).
+    static string Transcode1080(Download rec, string src)
+    {
+        string ffmpeg = FindFfmpeg();
+        if (ffmpeg == null || string.IsNullOrEmpty(src) || !File.Exists(src)) return null;
+        int w, h;
+        double duration;
+        ProbeVideo(ffmpeg, src, out w, out h, out duration);
+        if (w <= 0 || h <= 0) return null;
+
+        bool portrait = h > w;
+        int boxW = portrait ? 1080 : 1920;
+        int boxH = portrait ? 1920 : 1080;
+        string ext = Path.GetExtension(src);
+        if (w <= boxW && h <= boxH)
+        {
+            // Daha yüksek kaynak yokmuş: dönüştürmeye gerek yok, ".kaynak" eki atılır.
+            string plain = Path.Combine(rec.Dir, rec.Name + ext);
+            try
+            {
+                if (!File.Exists(plain)) File.Move(src, plain);
+                return File.Exists(plain) ? plain : src;
+            }
+            catch
+            {
+                return src;
+            }
+        }
+
+        string dst = Path.Combine(rec.Dir, rec.Name + ".mp4");
+        string vf = "scale=w=" + boxW + ":h=" + boxH +
+                    ":force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos";
+        foreach (string enc in Encoders)
+        {
+            if (rec.Canceled) break;
+            string arguments = "-hide_banner -nostats -loglevel error -y -i " + Quote(src) +
+                " -map 0:v:0 -map 0:a:0? -map 0:s? -vf " + Quote(vf) + " " + enc +
+                " -pix_fmt yuv420p -c:a aac -b:a 192k -c:s mov_text -movflags +faststart -progress pipe:1 " + Quote(dst);
+            int code = RunEncode(rec, ffmpeg, arguments, duration);
+            if (code == 0 && !rec.Canceled && GetFileSize(dst) > 0)
+            {
+                try { File.Delete(src); } catch { }
+                return dst;
+            }
+            try { File.Delete(dst); } catch { }
+        }
+        // İptalde ara kaynak dosya da silinir (indirme klasöründe ".kaynak" artığı kalmasın).
+        if (rec.Canceled)
+        {
+            try { File.Delete(src); } catch { }
+        }
+        return null;
+    }
+
+    // "ffmpeg -i" çıktısından çözünürlük ve süre okunur (ffprobe her sistemde yok).
+    static void ProbeVideo(string ffmpeg, string path, out int w, out int h, out double duration)
+    {
+        w = 0;
+        h = 0;
+        duration = 0;
+        string output;
+        try
+        {
+            RunCapture(ffmpeg, "-hide_banner -i " + Quote(path), 60000, out output);
+        }
+        catch
+        {
+            return;
+        }
+        Match d = Regex.Match(output, @"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)");
+        if (d.Success)
+        {
+            duration = int.Parse(d.Groups[1].Value, CultureInfo.InvariantCulture) * 3600 +
+                       int.Parse(d.Groups[2].Value, CultureInfo.InvariantCulture) * 60 +
+                       double.Parse(d.Groups[3].Value, CultureInfo.InvariantCulture);
+        }
+        Match v = Regex.Match(output, @"Video:[^\n]*?\b(\d{2,5})x(\d{2,5})\b");
+        if (v.Success)
+        {
+            w = int.Parse(v.Groups[1].Value, CultureInfo.InvariantCulture);
+            h = int.Parse(v.Groups[2].Value, CultureInfo.InvariantCulture);
+        }
+    }
+
+    // ffmpeg'i çalıştırır; "-progress pipe:1" satırlarından yüzde hesaplayıp "enc" olayı yollar.
+    static int RunEncode(Download rec, string ffmpeg, string arguments, double duration)
+    {
+        ProcessStartInfo psi = new ProcessStartInfo(ffmpeg, arguments);
+        psi.UseShellExecute = false;
+        psi.CreateNoWindow = true;
+        psi.RedirectStandardOutput = true;
+        psi.RedirectStandardError = true;
+        psi.RedirectStandardInput = true;
+        psi.WorkingDirectory = rec.Dir;
+        long lastSent = 0;
+        using (Process p = new Process())
+        {
+            p.StartInfo = psi;
+            p.OutputDataReceived += delegate(object s, DataReceivedEventArgs e)
+            {
+                if (e.Data == null || duration <= 0) return;
+                if (!e.Data.StartsWith("out_time_us=", StringComparison.Ordinal) &&
+                    !e.Data.StartsWith("out_time_ms=", StringComparison.Ordinal)) return;
+                long us;
+                if (!long.TryParse(e.Data.Substring(12), NumberStyles.Integer, CultureInfo.InvariantCulture, out us)) return;
+                long now = NowMs();
+                if (now - lastSent < 500) return;
+                lastSent = now;
+                int pct = (int)Math.Max(0, Math.Min(99, us / (duration * 10000.0)));
+                Send("{\"ev\":\"enc\",\"id\":" + Jid(rec.Id) + ",\"pct\":" + pct.ToString(CultureInfo.InvariantCulture) + "}");
+            };
+            p.ErrorDataReceived += delegate(object s, DataReceivedEventArgs e) { };
+            try
+            {
+                p.Start();
+            }
+            catch
+            {
+                return -1;
+            }
+            rec.Pid = p.Id; // iptal komutu artık kodlayıcıyı durdurur
+            try { p.StandardInput.Close(); } catch { }
+            p.BeginOutputReadLine();
+            p.BeginErrorReadLine();
+            p.WaitForExit();
+            return p.ExitCode;
+        }
+    }
+
+    static HashSet<string> ParseFlags(string text)
+    {
+        HashSet<string> set = new HashSet<string>(StringComparer.Ordinal);
+        if (string.IsNullOrEmpty(text)) return set;
+        foreach (string raw in text.Split(','))
+        {
+            string f = raw.Trim().ToLowerInvariant();
+            if (f == "pl" || f == "mp3" || f == "subs" || f == "thumb" || f == "meta" || f == "hq1080") set.Add(f);
+        }
+        return set;
+    }
+
     static string FindFfmpeg()
     {
-        string local = Path.Combine(exeDir, "ffmpeg.exe");
+        return FindTool("ffmpeg.exe");
+    }
+
+    // yt-dlp'nin YouTube imza çözümü için istediği JS çalışma ortamı.
+    static string FindDeno()
+    {
+        return FindTool("deno.exe");
+    }
+
+    // Önce yardımcı klasörüne, sonra PATH'e bakar.
+    static string FindTool(string fileName)
+    {
+        string local = Path.Combine(exeDir, fileName);
         if (File.Exists(local)) return local;
         string pathVar = Environment.GetEnvironmentVariable("PATH");
         if (!string.IsNullOrEmpty(pathVar))
@@ -786,7 +1200,7 @@ static class Program
                 {
                     string dir = part.Trim().Trim('"');
                     if (dir.Length == 0) continue;
-                    string candidate = Path.Combine(dir, "ffmpeg.exe");
+                    string candidate = Path.Combine(dir, fileName);
                     if (File.Exists(candidate)) return candidate;
                 }
                 catch { }
@@ -921,7 +1335,7 @@ if (-not (Test-Path $exePath)) {
 Good ('ythelper.exe hazir (' + [math]::Round((Get-Item $exePath).Length / 1KB) + ' KB)')
 
 # ---------------------------------------------------------------------------
-Step '2/6  yt-dlp indiriliyor'
+Step '2/7  yt-dlp indiriliyor'
 # ---------------------------------------------------------------------------
 $ytdlp = Join-Path $helperDir 'yt-dlp.exe'
 $needYtdlp = $true
@@ -935,13 +1349,19 @@ if ((Test-Path $ytdlp) -and ((Get-Item $ytdlp).Length -gt 5MB)) {
     }
 }
 if ($needYtdlp) {
+    $ytdlpNew = $ytdlp + '.yeni'
     try {
-        Get-File 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe' $ytdlp
+        Get-File 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe' $ytdlpNew
+        $expected = Get-ExpectedHash 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS' 'yt-dlp.exe'
+        Assert-Hash $ytdlpNew $expected 'yt-dlp.exe'
+        Move-Item -Force $ytdlpNew $ytdlp
     } catch {
+        Remove-Item -Force $ytdlpNew -ErrorAction SilentlyContinue
         Fail ('yt-dlp indirilemedi: ' + $_.Exception.Message + '  (Internet baglantinizi kontrol edin)')
     }
     Good ('yt-dlp.exe indirildi (' + [math]::Round((Get-Item $ytdlp).Length / 1MB, 1) + ' MB)')
 }
+Note 'yt-dlp bundan sonra eklenti tarafindan haftalik olarak guncellenir.'
 
 $verOut = Join-Path $env:TEMP ('vd-ver-' + [guid]::NewGuid().ToString('N') + '.txt')
 try {
@@ -963,7 +1383,45 @@ try {
 }
 
 # ---------------------------------------------------------------------------
-Step '3/6  FFmpeg kontrolu (1080p+ icin goruntu+ses birlestirme)'
+Step '3/7  Deno (YouTube icin JavaScript calisma ortami)'
+# ---------------------------------------------------------------------------
+# yt-dlp, YouTube'un imza/n-parametresi bulmacasini cozmek icin bir JS calisma
+# ortamina ihtiyac duyar; Deno olmadan bazi formatlar eksik kalir.
+$denoLocal = Join-Path $helperDir 'deno.exe'
+$denoCmd = Get-Command deno -ErrorAction SilentlyContinue
+if (Test-Path $denoLocal) {
+    Good 'Deno yardimci klasorunde bulundu'
+} elseif ($denoCmd) {
+    Good ('Deno sistemde bulundu: ' + $denoCmd.Source)
+} else {
+    $denoAsset = 'deno-x86_64-pc-windows-msvc.zip'
+    $denoZip = Join-Path $env:TEMP ('vd-' + $denoAsset)
+    try {
+        Get-File ('https://github.com/denoland/deno/releases/latest/download/' + $denoAsset) $denoZip
+        $expected = Get-ExpectedHash ('https://github.com/denoland/deno/releases/latest/download/' + $denoAsset + '.sha256sum') $denoAsset
+        Assert-Hash $denoZip $expected 'Deno'
+        Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
+        $arch = [IO.Compression.ZipFile]::OpenRead($denoZip)
+        try {
+            foreach ($entry in $arch.Entries) {
+                if ($entry.Name -eq 'deno.exe') {
+                    [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $denoLocal, $true)
+                }
+            }
+        } finally {
+            $arch.Dispose()
+        }
+        if (Test-Path $denoLocal) { Good 'Deno kuruldu' } else { Warn2 'Deno arsivden cikarilamadi' }
+    } catch {
+        Warn2 ('Deno indirilemedi: ' + $_.Exception.Message)
+        Warn2 'Deno olmadan YouTube indirmeleri calisir ama bazi kaliteler eksik olabilir.'
+    } finally {
+        Remove-Item -Force $denoZip -ErrorAction SilentlyContinue
+    }
+}
+
+# ---------------------------------------------------------------------------
+Step '4/7  FFmpeg kontrolu (1080p+ icin goruntu+ses birlestirme)'
 # ---------------------------------------------------------------------------
 $ffLocal = Join-Path $helperDir 'ffmpeg.exe'
 $ffPath = $null
@@ -984,19 +1442,25 @@ if (-not $ffPath) {
         Line '   FFmpeg, goruntu ve sesi birlestirmek icin GEREKLIDIR.' 'White'
         Line '   YouTube artik videolari tek parca sunmadigi icin FFmpeg olmadan' 'White'
         Line '   indirmeler buyuk olasilikla "format bulunamadi" hatasiyla biter.' 'White'
-        Line '   FFmpeg acik kaynaklidir; ~130 MB indirilir.' 'White'
+        Line '   FFmpeg acik kaynaklidir; ~90 MB indirilir.' 'White'
         $answer = Read-Host '   FFmpeg indirilsin mi? [E/h]'
         if ($answer -match '^(?i)\s*h') { $want = $false }
     }
     if ($want -and (-not $skipFfmpeg)) {
-        $zip = Join-Path $env:TEMP 'vd-ffmpeg.zip'
+        # "shared" derleme: ffmpeg/ffprobe + DLL'ler; tek parca derlemenin (~200 MB)
+        # yarisindan az indirme.
+        $ffAsset = 'ffmpeg-master-latest-win64-gpl-shared.zip'
+        $zip = Join-Path $env:TEMP ('vd-' + $ffAsset)
         try {
-            Get-File 'https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip' $zip
+            Get-File ('https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/' + $ffAsset) $zip
+            $expected = Get-ExpectedHash 'https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/checksums.sha256' $ffAsset
+            Assert-Hash $zip $expected 'FFmpeg'
             Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
             $arch = [IO.Compression.ZipFile]::OpenRead($zip)
             try {
                 foreach ($entry in $arch.Entries) {
-                    if ($entry.Name -eq 'ffmpeg.exe' -or $entry.Name -eq 'ffprobe.exe') {
+                    $inBin = $entry.FullName -match '/bin/[^/]+\.(exe|dll)$'
+                    if ($inBin -and $entry.Name -ne 'ffplay.exe') {
                         [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, (Join-Path $helperDir $entry.Name), $true)
                     }
                 }
@@ -1021,7 +1485,7 @@ if (-not $ffPath) {
 }
 
 # ---------------------------------------------------------------------------
-Step '4/6  Native messaging manifestosu yaziliyor'
+Step '5/7  Native messaging manifestosu yaziliyor'
 # ---------------------------------------------------------------------------
 $manifestPath = Join-Path $helperDir ($hostName + '.json')
 $manifest = [ordered]@{
@@ -1036,7 +1500,7 @@ Write-Text $manifestPath $json $false
 Good $manifestPath
 
 # ---------------------------------------------------------------------------
-Step '5/6  Tarayici kayit defteri anahtarlari (HKCU, yonetici gerekmez)'
+Step '6/7  Tarayici kayit defteri anahtarlari (HKCU, yonetici gerekmez)'
 # ---------------------------------------------------------------------------
 $browserBases = @(
     'HKCU:\Software\Google\Chrome',
@@ -1081,7 +1545,7 @@ if (Test-Path $oldDir) {
 if ($oldCleaned -gt 0) { Note ('Eski surum kalintilari temizlendi (' + $oldCleaned + ')') }
 
 # ---------------------------------------------------------------------------
-Step '6/6  Ozet'
+Step '7/7  Ozet'
 # ---------------------------------------------------------------------------
 Line ''
 Line '  Kurulum tamamlandi.' 'Green'

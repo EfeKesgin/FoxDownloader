@@ -1,6 +1,7 @@
 # FoxDownloader 🦊
 
-YouTube (4K'ya kadar), X (Twitter) ve TikTok videolarını indirmenizi sağlayan tarayıcı
+YouTube (4K'ya kadar, oynatma listeleri dahil), X (Twitter), TikTok ve yt-dlp'nin tanıdığı
+diğer sitelerden (Instagram, Reddit, Vimeo, Twitch…) video ve MP3 indirmenizi sağlayan tarayıcı
 eklentisi. Brave, Chrome, Edge, Opera ve diğer Chromium tabanlı tarayıcılarda çalışır (Windows).
 
 Ücretsiz ve açık kaynak — [MIT Lisansı](LICENSE).
@@ -22,8 +23,10 @@ Hazır! Video sayfasında araç çubuğundaki 🦊 simgesine tıklayın, kalitey
 *(Simge görünmüyorsa: adres çubuğunun yanındaki 🧩 simgesi → FoxDownloader → Sabitle.)*
 
 > - **Yönetici izni gerekmez**; sistem klasörlerine hiçbir şey kurulmaz.
-> - Kurulum internet ister: yardımcı araçlar otomatik indirilir
->   (yt-dlp ~17 MB; FFmpeg sistemde yoksa ~130 MB).
+> - Kurulum internet ister: yardımcı araçlar otomatik indirilir ve SHA-256 ile doğrulanır
+>   (yt-dlp ~18 MB, Deno ~43 MB; FFmpeg sistemde yoksa ~90 MB).
+> - **Güncelleme:** yeni sürümün `FoxDownloader-Kur.exe`'sini çalıştırıp tarayıcıda eklentiyi
+>   yenilemeniz yeterli. yt-dlp ise kendiliğinden (haftada bir) güncellenir.
 
 ## Kaldırma
 
@@ -39,7 +42,17 @@ Ardından tarayıcıdan: Uzantılar sayfası → FoxDownloader → **Kaldır**.
   sürerse Ayarlar → **Kontrol et**.
 - **Antivirüs yardımcıyı işaretledi.** Yanlış pozitiftir (yerel derlenen imzasız bir araçtır);
   isterseniz `%LOCALAPPDATA%\FoxDownloaderHelper` klasörünü dışlamalara ekleyin.
-- **Hangi kaliteler destekleniyor?** YouTube 360p–4K, TikTok filigransız MP4, X 720p+.
+- **Hangi kaliteler destekleniyor?** YouTube 360p–4K ve MP3, TikTok filigransız MP4 ve MP3, X 720p+.
+- **YouTube 1080p bulanık görünüyor.** YouTube'un 1080p akışı çok sıkıştırılmıştır.
+  **1080p • Yüksek kalite** satırını seçin: video 4K kaynaktan indirilip bilgisayarınızda 1080p'ye
+  küçültülür (ekran kartıyla genelde 1 dakikadan kısa sürer).
+- **Oynatma listesinin tamamını indirebilir miyim?** Evet: liste içindeki bir videoda ya da liste
+  sayfasında popup'ta **Oynatma listesinin tamamı** bölümü çıkar; videolar liste adıyla açılan
+  klasöre sırayla iner.
+- **Başka siteler?** Desteklenmeyen bir sitedeyken popup "yt-dlp ile dene" satırları gösterir;
+  site yt-dlp tarafından tanınıyorsa indirilir.
+- **YouTube indirmesi birden hata vermeye başladı.** YouTube değişmiş olabilir: Ayarlar →
+  **Şimdi güncelle** (otomatik güncelleme açıksa bu zaten kendiliğinden denenir).
 - **Neden ekstra bir "yardımcı" kuruluyor?** YouTube yüksek kaliteleri tarayıcıya kapatıyor;
   indirmeyi yerel, açık kaynak `yt-dlp` üzerinden yapıyoruz.
 

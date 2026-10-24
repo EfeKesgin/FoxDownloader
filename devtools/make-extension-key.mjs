@@ -5,7 +5,8 @@
 // göre değişir; manifest.json içindeki "key" alanı kimliği sabitler.
 //
 // Kullanım: node devtools/make-extension-key.mjs
-// Çıktı: devtools/extension-key.json (özel anahtar dahil - SADECE geliştirme içindir)
+// Çıktı: devtools/extension-key.json         (kimlik + açık anahtar; depoda tutulur)
+//        devtools/extension-key.private.json (özel anahtar; .gitignore'da — PAYLAŞMAYIN)
 
 import { generateKeyPairSync, createHash } from 'node:crypto';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
@@ -14,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outFile = join(here, 'extension-key.json');
+const privateFile = join(here, 'extension-key.private.json');
 
 function idFromSpki(spkiDer) {
   const hash = createHash('sha256').update(spkiDer).digest();
@@ -42,12 +44,11 @@ const { publicKey, privateKey } = generateKeyPairSync('rsa', {
 const key = publicKey.toString('base64');
 const id = idFromSpki(publicKey);
 
-writeFileSync(
-  outFile,
-  JSON.stringify({ id, key, privateKeyPem: privateKey, createdAt: new Date().toISOString() }, null, 2),
-  'utf8'
-);
+const createdAt = new Date().toISOString();
+writeFileSync(outFile, JSON.stringify({ id, key, createdAt }, null, 2), 'utf8');
+writeFileSync(privateFile, JSON.stringify({ id, privateKeyPem: privateKey, createdAt }, null, 2), 'utf8');
 
 console.log('Kimlik : ' + id);
 console.log('Key    : ' + key);
 console.log('Yazıldı: ' + outFile);
+console.log('Yazıldı: ' + privateFile + '  (özel anahtar — depoya eklemeyin)');

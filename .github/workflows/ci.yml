@@ -1,0 +1,62 @@
+# Her push/PR'da: söz dizimi denetimi, üretilen betiklerin güncelliği, testler ve EXE derlemesi.
+# "v*" etiketi itildiğinde: derlenen EXE'ler o etiketin GitHub Release'ine yüklenir.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Söz dizimi denetimi
+        run: node devtools/check.mjs
+
+      - name: Üretilen yardımcı betikleri güncel mi
+        run: node devtools/build-helper.mjs --check
+
+      - name: Testler
+        run: npm test
+
+      - name: EXE derlemesi
+        run: node devtools/build-installer.mjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FoxDownloader-exe
+          path: dist/*.exe
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: FoxDownloader-exe
+          path: dist
+
+      - name: Release'e yükle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.exe --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" dist/*.exe --title "FoxDownloader $TAG" --generate-notes --repo "$GITHUB_REPOSITORY"
+          fi
