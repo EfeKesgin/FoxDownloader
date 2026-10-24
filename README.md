@@ -174,8 +174,8 @@ icons/       Eklenti ikonları
 ### Sürüm yayınlama
 
 1. `manifest.json` ve `package.json` içindeki `version` değerini artır, `main`'e birleştir.
-2. `v1.2.3` biçiminde bir etiket gönder (`git tag v1.2.3 && git push origin v1.2.3`).
-3. GitHub Actions EXE'leri derleyip o sürümün Release sayfasına kendisi ekler. `dist/` klasörü depoya eklenmez.
+2. `node devtools/build-installer.mjs` ile EXE'leri derle.
+3. `gh release create v1.2.3 dist/*.exe` ile sürümü oluşturup iki EXE'yi ekle. `dist/` klasörü depoya eklenmez.
 
 ## Yasal not
 

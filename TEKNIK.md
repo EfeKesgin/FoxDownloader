@@ -124,7 +124,6 @@ devtools/
 └── check.mjs              # Tüm JS dosyaları için söz dizimi denetimi
 
 tests/                     # node:test — utils, YouTube adres ayrıştırma, yardımcı entegrasyonu
-.github/workflows/ci.yml   # Windows CI + etiketle Release'e EXE yükleme
 ```
 
 ### İndirme hatları
@@ -216,10 +215,6 @@ node devtools/check.mjs                # tüm JS dosyalarının söz dizimini de
 npm test                               # birim testleri + (Windows'ta) yardımcı entegrasyon testi
 powershell -File icons/generate-icons.ps1   # tilki logosunu yeniden üretir
 ```
-
-**CI** (`.github/workflows/ci.yml`): her push/PR'da Windows'ta söz dizimi, üretilen betiklerin
-güncelliği, testler ve EXE derlemesi çalışır. `v*` etiketi itildiğinde EXE'ler o sürümün GitHub
-Release'ine yüklenir (`dist/` artık depoda tutulmaz).
 
 `build-installer.mjs` çıktısı:
 `dist/FoxDownloader-Kur.exe` (kurulum) ve `dist/FoxDownloader-Kaldir.exe` (kaldırma).
